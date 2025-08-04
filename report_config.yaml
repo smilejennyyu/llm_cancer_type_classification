@@ -1,0 +1,117 @@
+# Paths and toggles
+data_directory: "/data1/morrisq/yuj13/llm_genomics/genie_data_v17.0"
+
+sample_gddens_csv: "/data1/morrisq/yuj13/llm_genomics/cd-23-0996_table_s1_suppst1.csv"
+tumor_types_file: "/data1/morrisq/yuj13/llm_genomics/tumor_type_final.txt"
+clinical_sample_file: "{data_directory}/data_clinical_sample.txt"
+clinical_patient_file: "{data_directory}/data_clinical_patient.txt"
+patient_impact_file: "/data1/morrisq/yuj13/llm_genomics/zeroshot_cancertype/data_clinical_patient.txt"
+genie_features_file: "/data1/morrisq/yuj13/llm_genomics/genie_ft_all_10_samples.csv"
+
+mutations_file: "{data_directory}/data_mutations_extended.txt"
+cna_file: "{data_directory}/data_CNA.txt"
+fusions_file: "{data_directory}/data_sv.txt"
+
+output_report_csv: "/data1/morrisq/yuj13/llm_genomics/genie_report/test/genie_reports.csv"
+
+# Subsetting behavior
+subset:
+  enabled: false
+  group_by: "CANCER_TYPE"
+  frac: 0.05
+  shuffle_seed: 42
+
+# Batching: if size is null, write one file; if integer, split into files of at most that many rows
+batching:
+  size: null  # set to null to disable batching, or an integer like 5000
+
+# Chromosomal arm-level columns to consider
+chromosomal_columns:
+  - Amp_10p
+  - Amp_10q
+  - Amp_11p 
+  - Amp_11q
+  - Amp_12p
+  - Amp_12q
+  - Amp_13q
+  - Amp_14q
+  - Amp_15q
+  - Amp_16p
+  - Amp_16q
+  - Amp_17p
+  - Amp_17q
+  - Amp_18p
+  - Amp_18q
+  - Amp_19p
+  - Amp_19q
+  - Amp_1p
+  - Amp_1q
+  - Amp_20p
+  - Amp_20q
+  - Amp_21p
+  - Amp_21q
+  - Amp_22q
+  - Amp_2p
+  - Amp_2q
+  - Amp_3p
+  - Amp_3q
+  - Amp_4p
+  - Amp_4q
+  - Amp_5p
+  - Amp_5q
+  - Amp_6p
+  - Amp_6q
+  - Amp_7p
+  - Amp_7q
+  - Amp_8p
+  - Amp_8q
+  - Amp_9p
+  - Amp_9q
+  - Amp_Xp
+  - Amp_Xq
+  - Del_10p
+  - Del_10q
+  - Del_11p
+  - Del_11q
+  - Del_12p
+  - Del_12q
+  - Del_13q
+  - Del_14q
+  - Del_15q
+  - Del_16p
+  - Del_16q
+  - Del_17p
+  - Del_17q
+  - Del_18p
+  - Del_18q
+  - Del_19p
+  - Del_19q
+  - Del_1p
+  - Del_1q
+  - Del_20p
+  - Del_20q
+  - Del_21p
+  - Del_21q
+  - Del_22q
+  - Del_2p
+  - Del_2q
+  - Del_3p
+  - Del_3q
+  - Del_4p
+  - Del_4q
+  - Del_5p
+  - Del_5q
+  - Del_6p
+  - Del_6q
+  - Del_7p
+  - Del_7q
+  - Del_8p
+  - Del_8q
+  - Del_9p
+  - Del_9q
+  - Del_Xp
+  - Del_Xq
+  
+
+# Sample ID trimming pattern for SAMPLE_ID -> PATIENT_ID
+sample_id_suffix_to_strip: "-T01-IM3"
