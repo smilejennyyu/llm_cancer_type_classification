@@ -1,7 +1,8 @@
 # LLM-Driven Genomic Reporting & Classification
 
 This repository contains two main steps for working with genomic data and large-language-model (LLM)–based cancer type classification:
-0. **Generate features**
+
+Step 0. **Generate features**
    A sample Genie feature table is included at `input_features/genie_ft_9_samples.csv`. To create your own for the entire Genie data:
 
    - Clone the [GDD-ENS repository](https://github.com/smilejennyyu/GDD_ENS.git).  
@@ -14,7 +15,7 @@ This repository contains two main steps for working with genomic data and large-
       --output input_features/genie_ft_<n>_samples.csv
    - See the full workflow in the [GDD-ENS documentation](https://github.com/smilejennyyu/GDD_ENS/blob/main/doc/workflow.md).
 
-1. **`generate_report.py`**  
+Step 1. **`generate_report.py`**  
    Generates per-sample genomic reports (mutations, CNAs, fusions, chromosomal arm changes) from raw data using a YAML configuration.  
    ```
    python generate_report.py --config report_config.yaml
@@ -30,7 +31,7 @@ This repository contains two main steps for working with genomic data and large-
    | `SAMPLE_TYPE_DETAILED` | Detailed description of the sample source or assay             |
 
 
-2. **`classify_cancer_llm.py`**  
+Step 2. **`classify_cancer_llm.py`**  
    Runs an LLM (Azure/OpenAI or local MedGemma) to predict tumor types and probabilities from those reports.
    ```
    python classify_cancer_llm.py --config llm_config.yaml
@@ -62,7 +63,7 @@ This repository contains two main steps for working with genomic data and large-
 - **pip** for installing dependencies: `pip install -r requirements.txt`
 - Access to data files (CSV/txt) as specified in the configs  
 - (If using Azure) an Azure OpenAI endpoint (`export AZURE_OPENAI_ENDPOINT='xxx'`) & API key (`export AZURE_OPENAI_API_KEY='xxx'`), or  
-- (If using MedGemma) GPU or CPU setup with PyTorch & Transformers  
+- (If using MedGemma) GPU or CPU setup with huggingface Transformers. 
 
 ---
 
