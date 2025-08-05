@@ -1,0 +1,24 @@
+# Choose either "azure" or "medgemma"
+model_choice: "medgemma"  # or "medgemma"
+
+# Paths 
+input_prompts: "/data1/morrisq/yuj13/llm_genomics/llm_cancer_type_classification/report/genie_reports.csv"             # CSV with SAMPLE_ID,REPORT,CANCER_TYPE,CANCER_TYPE_DETAILED,SAMPLE_TYPE_DETAILED
+output_file: "/data1/morrisq/yuj13/llm_genomics/llm_cancer_type_classification/output/output_medgemma_no_quantizationl.csv"
+background_prompt: "/data1/morrisq/yuj13/llm_genomics/llm_cancer_type_classification/prompt_example.txt"
+
+# Azure/OpenAI settings (used only if model_choice is "azure")
+azure:
+  model: "o3-mini"           # e.g., "o3-mini", "4o", "o1", etc.
+  endpoint: null             # your openai endpoint, or leave null to use var
+  api_key: null              # your api key or leave null to use AZURE_OPENAI_API_KEY
+
+# Local MedGemma settings (used only if model_choice is "medgemma")
+medgemma:
+  model_id: "google/medgemma-27b-it"
+  quantization: false             # enable quantization to switch for all 4-bit settings
+  bnb_4bit_compute_dtype: "float16"  # or "bfloat16"
+  cache_dir: "/data1/morrisq/yuj13/llm_genomics/huggingface_model"
+  transformers_cache: "/data1/morrisq/yuj13/llm_genomics/huggingface_model/transformers"
+
+# Runtime / behavior
+log_file: "app.log"
