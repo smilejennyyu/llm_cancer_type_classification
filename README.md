@@ -13,7 +13,7 @@ This repository contains two main steps for working with genomic data and large-
       python generate_feature_table.py \
       --reference h19.fa \
       --genie-data /path/to/GENIE \
-      --output input_features/genie_ft_<n>_samples.csv
+      --output input_features/genie_ft_samples.csv
    - See the full workflow in the [GDD-ENS documentation](https://github.com/smilejennyyu/GDD_ENS/blob/main/doc/workflow.md).
 
 ## Step 1: **Run `generate_report.py`**  
