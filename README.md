@@ -2,7 +2,8 @@
 
 This repository contains two main steps for working with genomic data and large-language-model (LLM)–based cancer type classification:
 
-Step 0. **Generate features**
+Step 0: **Generate features**
+
    A sample Genie feature table is included at `input_features/genie_ft_9_samples.csv`. To create your own for the entire Genie data:
 
    - Clone the [GDD-ENS repository](https://github.com/smilejennyyu/GDD_ENS.git).  
@@ -15,7 +16,7 @@ Step 0. **Generate features**
       --output input_features/genie_ft_<n>_samples.csv
    - See the full workflow in the [GDD-ENS documentation](https://github.com/smilejennyyu/GDD_ENS/blob/main/doc/workflow.md).
 
-Step 1. **`generate_report.py`**  
+Step 1: **Run `generate_report.py`**  
    Generates per-sample genomic reports (mutations, CNAs, fusions, chromosomal arm changes) from raw data using a YAML configuration.  
    ```
    python generate_report.py --config report_config.yaml
@@ -31,7 +32,7 @@ Step 1. **`generate_report.py`**
    | `SAMPLE_TYPE_DETAILED` | Detailed description of the sample source or assay             |
 
 
-Step 2. **`classify_cancer_llm.py`**  
+Step 2: **Run `classify_cancer_llm.py`**  
    Runs an LLM (Azure/OpenAI or local MedGemma) to predict tumor types and probabilities from those reports.
    ```
    python classify_cancer_llm.py --config llm_config.yaml
