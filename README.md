@@ -25,11 +25,11 @@ Step 1: **Run `generate_report.py`**
 
    | Column                 | Description                                                    |
    | ---------------------- | -------------------------------------------------------------- |
-   | `SAMPLE_ID`            | Tumor sample identifier                                        |
+   | `SAMPLE_ID`            | Tumor sample ID                                                |
    | `REPORT`               | Text summary of mutations, CNAs, fusions, and arm-level events |
-   | `CANCER_TYPE`          | Ground-truth tumor category                                    |
-   | `CANCER_TYPE_DETAILED` | Fine-grained subtype annotation                                |
-   | `SAMPLE_TYPE_DETAILED` | Detailed description of the sample source or assay             |
+   | `CANCER_TYPE`          | Ground-truth tumor type                                        |
+   | `CANCER_TYPE_DETAILED` | Cancer subtype annotation                                      |
+   | `SAMPLE_TYPE_DETAILED` | Sample type information (E.g., primary)                        |
 
 
 Step 2: **Run `classify_cancer_llm.py`**  
@@ -40,7 +40,7 @@ Step 2: **Run `classify_cancer_llm.py`**
    Output: csv file with the predictions and corresponding explanations from LLM (e.g. `output/output.csv`). The output file column names are shown below:
    | Column            | Description                                                                                      |
    | ----------------- | ------------------------------------------------------------------------------------------------ |
-   | `SAMPLE_ID`       | Tumor sample identifier                                                                          |
+   | `SAMPLE_ID`       | Tumor sample ID                                                                                  |
    | `prediction1`     | Top predicted tumor type                                                                         |
    | `prob1`           | Probability of `prediction1`                                                                     |
    | `prediction2`     | Second-ranked predicted tumor type                                                               |
@@ -50,9 +50,9 @@ Step 2: **Run `classify_cancer_llm.py`**
    | `key_genes`       | Top 3 mutated genes driving the prediction (or `None`)                                           |
    | `key_arm_changes` | Top 3 chromosomal arm–level events (amplifications/deletions) driving the prediction (or `None`) |
    | `key_scnas`       | Top 3 focal somatic copy-number abnormalities driving the prediction (or `None`)                 |
-   | `key_fusions`     | Top 3 somatic fusions or rearrangements driving the prediction (or `None`)                       |
-   | `explanation`     | 1–2 sentence rationale linking features to the top prediction                                    |
-   | `ground_truth`    | Known cancer type (for benchmarking)                                                             |
+   | `key_fusions`     | Top 3 somatic fusions features driving the prediction (or `None`)                                |
+   | `explanation`     | 1–2 sentence rationale explaining features to the top prediction                                 |
+   | `ground_truth`    | Cancer type ground truth (for benchmarking)                                                      |
 
 
 ---
