@@ -1,4 +1,4 @@
-# LLM-Driven Genomic Reporting & Classification
+# LLM-Driven Cancer Type Classification
 
 This repository contains two main steps for working with genomic data and large-language-model (LLM)–based cancer type classification:
 
