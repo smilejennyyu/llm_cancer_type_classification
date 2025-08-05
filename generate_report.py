@@ -154,7 +154,7 @@ def main(config_path):
 
     # Load base data
     sample_gddens = pd.read_csv(cfg['sample_gddens_csv'], skiprows=1)
-    suffix = cfg.get('sample_id_suffix_to_strip', '')
+    suffix = "-T01-IM3"
     if suffix:
         sample_gddens['PATIENT_ID'] = sample_gddens.SAMPLE_ID.str.replace(f"{suffix}$", "", regex=True)
     else:
@@ -162,8 +162,6 @@ def main(config_path):
 
     tumor_types = pd.read_csv(cfg['tumor_types_file'], sep='\t')
     clinical_merged = read_clinical_sample_and_patient(cfg['clinical_sample_file'], cfg['clinical_patient_file'])
-    patient_impact = pd.read_csv(cfg['patient_impact_file'], sep='\t', comment='#')
-    patient_impact['GENDER'] = patient_impact.get('SEX', pd.Series(dtype=str))
     gdd_ens_fts = pd.read_csv(cfg['genie_features_file'])
     samples_df = pd.read_csv(cfg['clinical_sample_file'], sep='\t', comment='#')
     sample_val = samples_df[
@@ -175,8 +173,6 @@ def main(config_path):
     # Only get samples that intersect with samples present in feature files
     gdd_sample_ids = set(gdd_ens_fts['SAMPLE_ID'].unique())
     val_set = val_set & gdd_sample_ids
-    logging.info(f"Validation set size (unique samples, intersected with gdd_ens_fts): {len(val_set)}")
-
 
     # Mutations
     mutations = pd.read_csv(cfg['mutations_file'], sep='\t', comment='#')
@@ -202,7 +198,17 @@ def main(config_path):
     logging.info("Created fusion report strings.")
 
     # Chromosomal arm-level
-    chr_cols = cfg.get('chromosomal_columns', [])
+    chr_cols = ["Amp_10p", "Amp_10q", "Amp_11p", "Amp_11q", "Amp_12p", "Amp_12q", "Amp_13q", \
+                "Amp_14q", "Amp_15q", "Amp_16p", "Amp_16q", "Amp_17p", "Amp_17q", "Amp_18p", \
+                "Amp_18q", "Amp_19p", "Amp_19q", "Amp_1p", "Amp_1q", "Amp_20p", "Amp_20q", \
+                "Amp_21p", "Amp_21q", "Amp_22q", "Amp_2p", "Amp_2q", "Amp_3p", "Amp_3q", "Amp_4p", \
+                "Amp_4q", "Amp_5p", "Amp_5q", "Amp_6p", "Amp_6q", "Amp_7p", "Amp_7q", "Amp_8p", \
+                "Amp_8q", "Amp_9p", "Amp_9q", "Amp_Xp", "Amp_Xq", "Del_10p", "Del_10q", "Del_11p", \
+                "Del_11q", "Del_12p", "Del_12q", "Del_13q", "Del_14q", "Del_15q", "Del_16p", "Del_16q", \
+                "Del_17p", "Del_17q", "Del_18p", "Del_18q", "Del_19p", "Del_19q", "Del_1p", "Del_1q", \
+                "Del_20p", "Del_20q", "Del_21p", "Del_21q", "Del_22q", "Del_2p", "Del_2q", "Del_3p", \
+                "Del_3q", "Del_4p", "Del_4q", "Del_5p", "Del_5q", "Del_6p", "Del_6q", "Del_7p", "Del_7q", \
+                "Del_8p", "Del_8q", "Del_9p", "Del_9q", "Del_Xp", "Del_Xq"]
     chr_df = gdd_ens_fts.loc[:, chr_cols] if chr_cols else pd.DataFrame()
     chr_df = chr_df[(chr_df > 0).any(axis=1)]
     chr_report = create_chr_level_report(chr_df)
@@ -245,7 +251,7 @@ def main(config_path):
     if subset_cfg.get('enabled', False):
         group_by = subset_cfg.get('group_by', 'CANCER_TYPE')
         frac = subset_cfg.get('frac', 0.05)
-        seed = subset_cfg.get('shuffle_seed', 42)
+        seed = 42
         if group_by not in out_df.columns:
             logging.warning(f"Requested subset group_by '{group_by}' not in columns; skipping subsetting.")
         else:
