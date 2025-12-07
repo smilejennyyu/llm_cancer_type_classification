@@ -1,0 +1,201 @@
+---
+title: "Benign vs. Pathogenic annotation"
+output: html_document
+date: "2025-10-26"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Load libraries
+```{r setup}
+library(data.table)
+library(here)
+if (!exists("case.", inherits = FALSE)) case. <- data.table::fcase
+```
+
+# Main Annotation Pipeline
+```{r annotation_pipeline}
+# ============================================
+# 1. LOAD INPUT FILES
+# ============================================
+cat("Loading input files...\n")
+maf <- fread("/Users/jennyyu/Documents/llm_genomics/codes/VCF_annotate/data_mutations_extended_somatic.oncokb.txt")
+cosmic <- fread("/Users/jennyyu/Documents/llm_genomics/codes/VCF_annotate/CancerMutationCensus_AllData_v102_GRCh37.tsv")
+alphamissense <- fread("/Users/jennyyu/Documents/llm_genomics/codes/VCF_annotate/AlphaMissense_hg19.tsv")
+
+cat("Original MAF rows:", nrow(maf), "\n")
+
+# ============================================
+# CHECK/CREATE MUTATION_ID
+# ============================================
+cat("\nChecking for mutation_id column...\n")
+
+if (!"mutation_id" %in% names(maf)) {
+  cat("mutation_id column not found. Creating mutation_id using row indices...\n")
+  maf[, mutation_id := .I]  # .I gives the row number in data.table
+  cat("Created mutation_id column with values from 1 to", nrow(maf), "\n")
+} else {
+  cat("mutation_id column already exists.\n")
+  
+  # Check for any issues with existing mutation_id
+  n_unique <- length(unique(maf$mutation_id))
+  n_missing <- sum(is.na(maf$mutation_id))
+  n_duplicates <- sum(duplicated(maf$mutation_id))
+  
+  cat("  - Total rows:", nrow(maf), "\n")
+  cat("  - Unique mutation_ids:", n_unique, "\n")
+  cat("  - Missing mutation_ids:", n_missing, "\n")
+  cat("  - Duplicate mutation_ids:", n_duplicates, "\n")
+  
+  # Warn if there are issues
+  if (n_missing > 0) {
+    warning("There are ", n_missing, " missing mutation_ids in the MAF file!")
+  }
+  if (n_duplicates > 0) {
+    warning("There are ", n_duplicates, " duplicate mutation_ids in the original MAF file!")
+  }
+}
+
+# ============================================
+# 2. PROCESS COSMIC/CLINVAR ANNOTATIONS
+# ============================================
+cat("\nProcessing COSMIC/ClinVar annotations...\n")
+
+# Clean column names in cosmic
+cosmic <- setnames(cosmic, colnames(cosmic), gsub(" ", "_", colnames(cosmic)))
+
+# Check for duplicates in cosmic
+cosmic_duplicates <- cosmic[, .N, by = .(GENE_NAME, Mutation_AA)][N > 1]
+cat("Duplicate GENE_NAME/Mutation_AA combinations in COSMIC:", nrow(cosmic_duplicates), "\n")
+
+# Remove duplicates from cosmic (keep first occurrence)
+cosmic_unique <- unique(cosmic, by = c("GENE_NAME", "Mutation_AA"))
+cat("Unique COSMIC entries:", nrow(cosmic_unique), "\n")
+
+# Merge MAF with COSMIC/ClinVar
+maf_cosmic <- merge(
+  maf, 
+  cosmic_unique[, .(GENE_NAME, Mutation_AA, CLINVAR_CLNSIG, CLINVAR_TRAIT)], 
+  by.x = c("Hugo_Symbol", "HGVSp_Short"), 
+  by.y = c("GENE_NAME", "Mutation_AA"),
+  all.x = TRUE
+)
+
+# Create ClinVar labels with consistent naming
+maf_cosmic[, ClinVar_label := case.(
+  grepl("pathogenic", CLINVAR_CLNSIG, ignore.case = TRUE), "Oncogenic",
+  grepl("benign", CLINVAR_CLNSIG, ignore.case = TRUE), "Benign",
+  default = "VUS"
+)]
+
+cat("MAF rows after COSMIC merge:", nrow(maf_cosmic), "\n")
+cat("ClinVar annotation distribution:\n")
+print(table(maf_cosmic$ClinVar_label, useNA = "ifany"))
+
+# ============================================
+# 3. PROCESS ALPHAMISSENSE ANNOTATIONS
+# ============================================
+cat("\nProcessing AlphaMissense annotations...\n")
+
+# Add chromosome prefix for merging
+maf_cosmic[, CHROM := paste0("chr", Chromosome)]
+
+# Merge with AlphaMissense
+maf_annotated <- merge(
+  maf_cosmic,
+  alphamissense,
+  by.x = c("CHROM", "Start_Position", "Reference_Allele", "Tumor_Seq_Allele2"),
+  by.y = c("#CHROM", "POS", "REF", "ALT"),
+  all.x = TRUE
+)
+
+# Check for duplicates caused by multiple transcripts
+duplicates_before <- sum(duplicated(maf_annotated$mutation_id))
+cat("Duplicate mutation_ids before deduplication:", duplicates_before, "\n")
+
+# If there are duplicates, keep the one with highest pathogenicity score
+if (duplicates_before > 0) {
+  # Add transcript count before deduplication
+  maf_annotated[, n_transcripts := .N, by = mutation_id]
+  
+  # Keep row with highest am_pathogenicity score per mutation_id
+  maf_annotated <- maf_annotated[order(mutation_id, -am_pathogenicity)][
+    , .SD[1], by = mutation_id
+  ]
+  
+  cat("Duplicate mutation_ids after deduplication:", sum(duplicated(maf_annotated$mutation_id)), "\n")
+}
+
+# Create AlphaMissense labels with consistent naming
+maf_annotated[, AlphaMissense_label := case.(
+  am_class == "pathogenic", "Oncogenic",
+  am_class == "benign", "Benign",
+  default = "VUS"
+)]
+
+cat("AlphaMissense annotation distribution:\n")
+print(table(maf_annotated$AlphaMissense_label, useNA = "ifany"))
+
+# ============================================
+# 4. CLEAN UP AND SELECT FINAL COLUMNS
+# ============================================
+# Remove temporary columns
+maf_annotated[, CHROM := NULL]
+
+# Select and order columns for final output
+# Keep original MAF columns plus new annotations
+original_cols <- names(maf)
+new_annotation_cols <- c("ClinVar_label", "CLINVAR_CLNSIG", "CLINVAR_TRAIT",
+                        "AlphaMissense_label", "am_class", "am_pathogenicity",
+                        "n_transcripts")
+
+# Only include columns that exist
+existing_new_cols <- intersect(new_annotation_cols, names(maf_annotated))
+final_cols <- c(original_cols, existing_new_cols)
+maf_final <- maf_annotated[, ..final_cols]
+
+# ============================================
+# 6. VALIDATE FINAL MUTATION_ID
+# ============================================
+cat("\nValidating final mutation_id integrity...\n")
+final_duplicates <- sum(duplicated(maf_final$mutation_id))
+if (final_duplicates > 0) {
+  warning("Final output still has ", final_duplicates, " duplicate mutation_ids!")
+} else {
+  cat("✓ All mutation_ids are unique in final output\n")
+}
+
+# ============================================
+# 5. SAVE OUTPUT
+# ============================================
+output_path <- "/Users/jennyyu/Documents/llm_genomics/codes/VCF_annotate/maf_annotated_final.csv"
+cat("\nSaving annotated MAF to:", output_path, "\n")
+write.csv(maf_final, output_path, row.names = FALSE)
+
+cat("\nAnnotation complete!\n")
+cat("Final output rows:", nrow(maf_final), "\n")
+cat("Final output columns:", ncol(maf_final), "\n")
+
+# ============================================
+# 6. SUMMARY STATISTICS
+# ============================================
+cat("\n=== ANNOTATION SUMMARY ===\n")
+
+# Cross-tabulation of annotations
+cat("\nClinVar vs AlphaMissense cross-tabulation:\n")
+print(table(ClinVar = maf_final$ClinVar_label, 
+           AlphaMissense = maf_final$AlphaMissense_label,
+           useNA = "ifany"))
+
+# Agreement statistics
+maf_final[, agreement := ClinVar_label == AlphaMissense_label]
+agreement_rate <- mean(maf_final$agreement, na.rm = TRUE) * 100
+cat("\nAgreement rate between ClinVar and AlphaMissense:", 
+    sprintf("%.2f%%", agreement_rate), "\n")
+
+# Show sample of final data
+cat("\nSample of final annotated data:\n")
+print(maf_final[1:min(5, nrow(maf_final)), 
+                .(mutation_id, Hugo_Symbol, HGVSp_Short, 
+                  ClinVar_label, AlphaMissense_label)])
+```
