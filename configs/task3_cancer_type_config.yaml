@@ -1,0 +1,24 @@
+# Paths and toggles
+data_directory: "YOUR_GENIE_DATA_PATH"
+
+sample_gddens_csv: "other_data/cd-23-0996_table_s1_suppst1.csv"
+tumor_types_file: "other_data/tumor_type_final.txt"
+clinical_sample_file: "{data_directory}/data_clinical_sample.txt"
+clinical_patient_file: "{data_directory}/data_clinical_patient.txt"
+genie_features_file: "input_features/genie_ft_9_samples.csv"
+
+mutations_file: "{data_directory}/data_mutations_extended.txt"
+cna_file: "{data_directory}/data_CNA.txt"
+fusions_file: "{data_directory}/data_sv.txt"
+
+output_report_csv: "report/genie_reports.csv"
+
+# Subsetting behavior
+subset:
+  enabled: false
+  group_by: "CANCER_TYPE"
+  frac: 0.05
+
+# Batching: if size is null, write one file; if integer, split into files of at most that many rows
+batching:
+  size: null  # set to null to disable batching, or an integer like 5000

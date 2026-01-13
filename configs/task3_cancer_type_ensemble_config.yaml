@@ -1,0 +1,85 @@
+# Task 3: Cancer Type Ensemble Model Configuration
+# Combines predictions from task-specific model (e.g., GDD) and LLM predictions
+
+# ============================================================================
+# Task Information
+# ============================================================================
+task_name: "Cancer Type Ensemble Model"
+
+# ============================================================================
+# Model 1: Task-Specific Model (e.g., GDD)
+# ============================================================================
+model1:
+  name: "GDD"  # Name used in output files and plots
+  predictions_dir: "/data1/morrisq/yuj13/llm_genomics/genie_output/GDD/filtered_batch_non_msk"
+
+  # Column mapping for model1 predictions
+  # Maps from original column names to standardized names
+  column_mapping:
+    Cancer_Type: "ground_truth"
+    # Pred1, Pred2, Conf1, Conf2 will be automatically renamed
+
+# ============================================================================
+# Model 2: LLM Model (e.g., gpt-5, gpt-4o, o3-mini)
+# ============================================================================
+model2:
+  name: "gpt-5"  # Name used in output files and plots
+  predictions_dir: "/data1/morrisq/yuj13/llm_genomics/genie_output/gpt-5/filtered_batch_non_msk"
+
+  # Normalize predictions (handle Unicode, capitalization, etc.)
+  normalize_predictions: true
+
+  # Column mapping for model2 predictions
+  column_mapping:
+    # prediction1, prediction2, prob1, prob2, ground_truth will be automatically renamed
+
+  # Specific prediction fixes (map incorrect predictions to correct ones)
+  prediction_fixes:
+    "Skin Cancer Non-Melanoma": "Skin Cancer, Non-Melanoma"
+    "Pancreatic cancer": "Pancreatic Cancer"
+
+# ============================================================================
+# Data Sources
+# ============================================================================
+# Optional: Clinical data for additional features
+clinical_data_path: "/data1/morrisq/yuj13/llm_genomics/genie_data_v17.0/data_clinical_sample.txt"
+clinical_columns:
+  - "SAMPLE_ID"
+  - "PATIENT_ID"
+  - "CANCER_TYPE_DETAILED"
+  - "SEQ_ASSAY_ID"
+
+# Optional: Assay information for center-based cross-validation
+assay_info_path: "/data1/morrisq/yuj13/llm_genomics/genie_data_v17.0/assay_information.txt"
+
+# ============================================================================
+# Output Configuration
+# ============================================================================
+# Output directory (use {timestamp} placeholder for automatic timestamping)
+output_dir: "/data1/morrisq/yuj13/llm_genomics/genie_meta_model_result/{timestamp}"
+
+# ============================================================================
+# Cross-Validation Settings
+# ============================================================================
+# Number of folds for k-fold cross-validation
+k_fold: 5
+
+# Random seed for reproducibility
+random_seed: 42
+
+# ============================================================================
+# Required Columns
+# ============================================================================
+# Columns that must be present (after mapping) to proceed
+required_columns:
+  - "gpt-5_Prediction1"  # Will be set based on model2 name
+  - "GDD_Prediction1"    # Will be set based on model1 name
+  - "ground_truth"
+  # PATIENT_ID is automatically required if present
+
+# ============================================================================
+# Logging
+# ============================================================================
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(levelname)s - %(message)s"

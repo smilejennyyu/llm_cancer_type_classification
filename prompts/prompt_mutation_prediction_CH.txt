@@ -1,0 +1,29 @@
+Below is a tumor DNA sequencing mutation report. Can you identify if the mutations are Tumor-somatic (TUMOR-SOMATIC) vs Clonal Hematopoiesis of Indeterminate Potential (CHIP) variants or unknown (if you're not sure)?
+
+IMPORTANT: Reply with EXACTLY this JSON structure, no additional nesting:
+{
+    "prediction": "TUMOR-SOMATIC or CHIP or UNKNOWN",
+    "prob": (a float number between 0 - 1),
+    "explanation": "your explanation here"
+}
+
+Do not nest predictions under gene names. Provide a single overall assessment for the entire report.
+
+CRITICAL: Return ONLY a single flat JSON object with these exact keys:
+- "prediction": must be exactly "TUMOR-SOMATIC", "CHIP", or "UNKNOWN" 
+- "prob": a number between 0 and 1
+- "explanation": your reasoning
+
+DO NOT nest predictions under gene names. DO NOT use "predictions" as a parent key.
+
+Example correct format:
+{"prediction": "CHIP", "prob": 0.87, "explanation": "..."}
+{"prediction": "TUMOR-SOMATIC", "prob": 0.62, "explanation": "..."}
+{"prediction": "UNKNOWN", "prob": 0.45, "explanation": "..."}
+
+The probability should reflect your actual confidence:
+- 0.9+ = very confident
+- 0.7-0.9 = confident  
+- 0.5-0.7 = somewhat confident
+- 0.3-0.5 = uncertain
+- <0.3 = very uncertain

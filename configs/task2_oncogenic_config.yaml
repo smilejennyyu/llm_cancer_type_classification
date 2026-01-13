@@ -1,0 +1,133 @@
+# Task 2: Oncogenic Mutation Report Generation Configuration
+# Processes oncogenic mutation data from MSK IMPACT solid/heme dataset
+
+# ============================================================================
+# Input Data Directory
+# ============================================================================
+data_dir: "/data1/morrisq/yuj13/llm_genomics/msk_solid_heme"
+
+# ============================================================================
+# Output Directories
+# ============================================================================
+# Output directory for balanced oncogenic:benign (2:1) dataset
+output_balanced: "/data1/morrisq/yuj13/llm_genomics/mutation_report/impact_oncogenic_sample_new"
+
+# Output directory for NSCLC-specific subset
+output_nsclc: "/data1/morrisq/yuj13/llm_genomics/mutation_report/impact_oncogenic_nsclc_final"
+
+# ============================================================================
+# Processing Options
+# ============================================================================
+# Skip specific processing steps
+skip_steps:
+  balanced: false  # Skip balanced dataset generation
+  nsclc: false     # Skip NSCLC subset generation
+
+# Chunk size for output CSV files (number of samples per file)
+chunk_size:
+  balanced: 2500
+  nsclc: 10000
+
+# ============================================================================
+# Oncogenic Annotation Processing
+# ============================================================================
+# Label normalization rules
+oncogenic_labels:
+  # Map these labels to standard categories
+  normalize:
+    "Likely Oncogenic": "Oncogenic"
+    "Inconclusive": "VUS"
+    "Unknown": "VUS"
+    "Likely Neutral": "Benign"
+
+  # Drop mutations with these labels
+  drop:
+    - "resistance"
+
+  # Use external annotations to reclassify VUS
+  reclassify_vus:
+    clinvar_benign: true   # Use ClinVar to reclassify VUS as Benign
+    dbsnp_benign: true     # Use dbSNP to reclassify VUS as Benign
+
+# AlphaMissense filtering
+alphamissense:
+  filter_vus: true  # Remove mutations labeled as VUS by AlphaMissense
+
+# ============================================================================
+# Balanced Dataset Configuration
+# ============================================================================
+balanced_dataset:
+  # Ratio of Oncogenic to Benign mutations
+  oncogenic_to_benign_ratio: 2
+
+  # Random seed for reproducibility
+  random_seed: 42
+
+  # Only include genes that have both Benign and Oncogenic mutations
+  require_both_types: true
+
+  # Deduplication criteria before analysis
+  dedup_columns:
+    - "Hugo_Symbol"
+    - "HGVSp_Short"
+    - "CANCER_TYPE"
+
+# ============================================================================
+# NSCLC Subset Configuration
+# ============================================================================
+nsclc_filter:
+  cancer_type: "Non-Small Cell Lung Cancer"
+
+# ============================================================================
+# File Naming Conventions
+# ============================================================================
+# Input file names (relative to data directory)
+input_files:
+  clinical_sample: "data_clinical_sample.txt"
+  clinical_patient: "data_clinical_patient.txt"
+  mutations_annotated: "maf_annotated_final_dbSNP.csv"
+
+# Output file naming
+output_files:
+  batch_prefix: "batch"
+
+# ============================================================================
+# Report Generation
+# ============================================================================
+# Columns required for processing
+required_columns:
+  - "Hugo_Symbol"
+  - "Variant_Classification"
+  - "HGVSp_Short"
+
+# Features to include in reports
+report_features:
+  - "CANCER_TYPE"
+  - "CANCER_TYPE_DETAILED"
+
+# Output columns in final reports
+output_columns:
+  - "mutation_id"
+  - "SAMPLE_ID"
+  - "ONCOGENIC"
+  - "AlphaMissense_label"
+  - "am_pathogenicity"
+  - "Hugo_Symbol"
+  - "HGVSp_Short"
+  - "CANCER_TYPE"
+  - "report_str"
+
+# ============================================================================
+# Report String Format
+# ============================================================================
+report_format:
+  # Template: "{Hugo_Symbol} exon {Exon_Number} {Variant_Classification} {HGVSp_Short}"
+  include_exon: true
+  replace_underscore: true  # Replace '_' with ' ' in Variant_Classification
+
+# ============================================================================
+# Logging
+# ============================================================================
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "[%(asctime)s] %(levelname)s: %(message)s"

@@ -1,0 +1,108 @@
+# Task 2: LLM-based Oncogenic Classification Configuration
+# Classifies mutations as Oncogenic vs Benign
+
+# ============================================================================
+# LLM Provider Configuration
+# ============================================================================
+llm_provider: "azure"  # Options: "azure", "openai", "claude", "medgemma", "local"
+
+# Azure OpenAI settings
+azure:
+  api_key_env: "AZURE_OPENAI_API_KEY"
+  endpoint_env: "AZURE_OPENAI_ENDPOINT"
+  api_version: "2025-01-01-preview"
+  model_name: "gpt-4o"
+
+# OpenAI settings
+openai:
+  api_key_env: "OPENAI_API_KEY"
+  model_name: "gpt-4"
+
+# Claude settings
+claude:
+  base_url: "http://tllihpcgpu1:4000/v1"
+  api_key: "litellm"
+  model_name: "bedrock-sonnet-37"
+
+# Local model settings (HuggingFace models)
+local:
+  model_name: "google/medgemma-27b-it"
+  device: "cuda"
+  quantization: true
+  max_new_tokens: 256
+  temperature: 0.7
+  top_p: 0.9
+
+# ============================================================================
+# Input/Output Configuration
+# ============================================================================
+# Input directory containing oncogenic mutation reports
+input_dir: "/data1/morrisq/yuj13/llm_genomics/mutation_report/impact_oncogenic_sample_new"
+
+# Output directory for predictions
+output_dir: "/data1/morrisq/yuj13/llm_genomics/mutation_output/impact_oncogenic_sample"
+
+# Prompt template file
+prompt_template: "prompts/prompt_mutation_prediction_oncogenic_absolute.txt"
+# Alternatively: "prompts/prompt_mutation_prediction_oncogenic_absolute_no_explain.txt"
+
+# ============================================================================
+# Processing Options
+# ============================================================================
+# Include explanation in output
+include_explanation: false  # Faster without explanation
+
+# Batch processing
+batch_size: null
+
+# Resume from existing output
+resume: true
+
+# ============================================================================
+# API Call Configuration
+# ============================================================================
+# Retry settings
+retry:
+  max_retries: 20
+  initial_wait_time: 2
+  max_wait_time: 60
+  max_reprompt_attempts: 3
+
+# Rate limiting
+rate_limit:
+  requests_per_minute: 60
+  delay_between_calls: 1
+
+# ============================================================================
+# Data Processing
+# ============================================================================
+# Required columns in input CSV
+required_columns:
+  - "SAMPLE_ID"
+  - "ONCOGENIC"    # Ground truth
+  - "report_str"   # Mutation report text
+
+# Output columns
+output_columns:
+  - "prediction"
+  - "prob"
+
+# Column name mapping
+column_mapping:
+  ONCOGENIC: "ground_truth"
+
+# ============================================================================
+# Logging
+# ============================================================================
+logging:
+  level: "INFO"
+  file: "oncogenic_prediction.log"
+  format: "%(asctime)s - %(levelname)s - %(message)s"
+
+# ============================================================================
+# Validation
+# ============================================================================
+# Valid prediction values
+valid_predictions:
+  - "Oncogenic"
+  - "Benign"

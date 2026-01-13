@@ -1,0 +1,63 @@
+# Task 1: Mutation Status Ensemble Model Configuration
+# Combines predictions from two models for TUMOR-SOMATIC vs CHIP classification
+
+# ============================================================================
+# Task Information
+# ============================================================================
+task_name: "Mutation Status Ensemble Model"
+
+# ============================================================================
+# Input Data
+# ============================================================================
+input:
+  # Path to merged predictions file containing both model predictions
+  # This file should have columns for both models' predictions and probabilities
+  data_path: "/path/to/merged_predictions.csv"
+
+# ============================================================================
+# Model 1 Configuration
+# ============================================================================
+model1:
+  name: "AlphaMissense"  # Name used in output files and plots
+  prediction_column: "AlphaMissense_prediction"
+  probability_column: "AlphaMissense_prob"
+
+# ============================================================================
+# Model 2 Configuration
+# ============================================================================
+model2:
+  name: "gpt-4o"  # Name used in output files and plots
+  prediction_column: "prediction"
+  probability_column: "prob"
+
+# ============================================================================
+# Output Configuration
+# ============================================================================
+# Output directory base (timestamp will be appended automatically)
+output_dir: "/data1/morrisq/yuj13/llm_genomics/mutation_meta_model_result"
+
+# ============================================================================
+# Cross-Validation Settings
+# ============================================================================
+# Number of folds for k-fold cross-validation
+k_fold: 5
+
+# Random seed for reproducibility
+random_seed: 42
+
+# ============================================================================
+# Required Columns
+# ============================================================================
+# Columns that must be present in the input data
+required_columns:
+  - "SAMPLE_ID"
+  - "PATIENT_ID"
+  - "ground_truth"
+  # Add "CANCER_TYPE" if you want to analyze by cancer type
+
+# ============================================================================
+# Logging
+# ============================================================================
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(levelname)s - %(message)s"

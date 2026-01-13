@@ -1,0 +1,151 @@
+# Task 3: LLM-based Cancer Type Classification Configuration
+# Classifies tumor samples by cancer type
+
+# ============================================================================
+# LLM Provider Configuration
+# ============================================================================
+llm_provider: "azure"  # Options: "azure", "openai", "claude", "medgemma", "local"
+
+# Azure OpenAI settings
+azure:
+  api_key_env: "AZURE_OPENAI_API_KEY"
+  endpoint_env: "AZURE_OPENAI_ENDPOINT"
+  api_version: "2025-01-01-preview"
+  model_name: "gpt-4o"
+
+# OpenAI settings
+openai:
+  api_key_env: "OPENAI_API_KEY"
+  model_name: "gpt-4"
+
+# Claude settings
+claude:
+  base_url: "http://tllihpcgpu1:4000/v1"
+  api_key: "litellm"
+  model_name: "bedrock-sonnet-37"
+
+# Local model settings (HuggingFace models)
+local:
+  model_name: "google/medgemma-27b-it"
+  device: "cuda"
+  quantization: true
+  max_new_tokens: 512  # Longer for cancer type task with detailed features
+  temperature: 0.7
+  top_p: 0.9
+
+# ============================================================================
+# Input/Output Configuration
+# ============================================================================
+# Input directory containing comprehensive genomic reports
+input_dir: "/data1/morrisq/yuj13/llm_genomics/genie_report/msk/filtered_batch_val"
+
+# Output directory for predictions
+output_dir: "/data1/morrisq/yuj13/llm_genomics/genie_output/gpt-4o"
+
+# Prompt template file
+prompt_template: "prompts/prompt_genie_extended_with_explain.txt"
+# Alternatively: "prompts/prompt_genie_extended_no_explain.txt" for faster inference
+
+# ============================================================================
+# Processing Options
+# ============================================================================
+# Include detailed explanation and key features
+include_explanation: true
+
+# Batch processing
+batch_size: null
+
+# Resume from existing output
+resume: true
+
+# ============================================================================
+# API Call Configuration
+# ============================================================================
+# Retry settings
+retry:
+  max_retries: 20
+  initial_wait_time: 2
+  max_wait_time: 60
+  max_reprompt_attempts: 3
+
+# Rate limiting
+rate_limit:
+  requests_per_minute: 60
+  delay_between_calls: 1
+
+# ============================================================================
+# Data Processing
+# ============================================================================
+# Required columns in input CSV
+required_columns:
+  - "SAMPLE_ID"
+  - "CANCER_TYPE"        # Ground truth
+  - "REPORT"             # Comprehensive genomic report text
+
+# Output columns (extended for cancer type classification)
+output_columns:
+  - "prediction1"        # Top prediction
+  - "prob1"              # Probability of top prediction
+  - "prediction2"        # Second prediction
+  - "prob2"              # Probability of second prediction
+  - "sex"                # Predicted sex
+  - "sex_used"           # Whether sex influenced prediction
+  - "key_genes"          # Top 3 influential genes
+  - "key_arm_changes"    # Top 3 chromosomal arm changes
+  - "key_scnas"          # Top 3 copy number alterations
+  - "key_fusions"        # Top 3 fusions
+  - "important_data_part"  # Most influential data type
+  - "explanation"        # Rationale (if include_explanation is true)
+
+# Column name mapping
+column_mapping:
+  CANCER_TYPE: "ground_truth"
+  REPORT: "report_str"
+
+# ============================================================================
+# Cancer Type Categories
+# ============================================================================
+# Valid cancer types for classification
+valid_cancer_types:
+  - "Adrenocortical Carcinoma"
+  - "Anal Cancer"
+  - "Bladder Cancer"
+  - "Bone Cancer"
+  - "Breast Cancer"
+  - "CNS Cancer"
+  - "Cervical Cancer"
+  - "Colorectal Cancer"
+  - "Endometrial Cancer"
+  - "Esophagogastric Cancer"
+  - "Gastrointestinal Neuroendocrine Tumor"
+  - "Gastrointestinal Stromal Tumor"
+  - "Germ Cell Tumor"
+  - "Glioma"
+  - "Head and Neck Cancer"
+  - "Hepatobiliary Cancer"
+  - "Melanoma"
+  - "Mesothelioma"
+  - "Nerve Sheath Tumor"
+  - "Non-Small Cell Lung Cancer"
+  - "Ovarian Cancer"
+  - "Pancreatic Cancer"
+  - "Peripheral Nervous System"
+  - "Prostate Cancer"
+  - "Renal Cell Carcinoma"
+  - "Retinoblastoma"
+  - "Salivary Gland Cancer"
+  - "Sex Cord Stromal Tumor"
+  - "Skin Cancer, Non-Melanoma"
+  - "Small Cell Lung Cancer"
+  - "Soft Tissue Sarcoma"
+  - "Thymic Tumor"
+  - "Thyroid Cancer"
+  - "Uterine Sarcoma"
+
+# ============================================================================
+# Logging
+# ============================================================================
+logging:
+  level: "INFO"
+  file: "cancer_type_prediction.log"
+  format: "%(asctime)s - %(levelname)s - %(message)s"

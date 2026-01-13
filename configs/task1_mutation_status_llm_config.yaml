@@ -1,0 +1,120 @@
+# Task 1: LLM-based Mutation Status Classification Configuration
+# Classifies mutations as TUMOR-SOMATIC vs CHIP (Clonal Hematopoiesis)
+
+# ============================================================================
+# LLM Provider Configuration
+# ============================================================================
+llm_provider: "azure"  # Options: "azure", "openai", "claude", "medgemma", "local"
+
+# Azure OpenAI settings
+azure:
+  api_key_env: "AZURE_OPENAI_API_KEY"
+  endpoint_env: "AZURE_OPENAI_ENDPOINT"
+  api_version: "2025-01-01-preview"
+  model_name: "gpt-4o"  # or "o3-mini", "gpt-4", "gpt-3.5-turbo"
+
+# OpenAI settings (for non-Azure)
+openai:
+  api_key_env: "OPENAI_API_KEY"
+  model_name: "gpt-4"
+
+# Claude settings
+claude:
+  base_url: "http://tllihpcgpu1:4000/v1"  # Local proxy or API endpoint
+  api_key: "litellm"  # or env variable name
+  model_name: "bedrock-sonnet-37"
+
+# Local model settings (HuggingFace models: MedGemma, Qwen, DeepSeek, etc.)
+local:
+  # Model path or HuggingFace model ID
+  model_name: "google/medgemma-27b-it"  # or "Qwen/Qwen3-30B-A3B-Instruct-2507", "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+  # Alternatively, use local path:
+  # model_path: "/path/to/local/model"
+
+  device: "cuda"  # or "cpu"
+  quantization: true  # 4-bit quantization (only for CUDA)
+
+  # Generation parameters
+  max_new_tokens: 256
+  temperature: 0.7
+  top_p: 0.9
+
+# ============================================================================
+# Input/Output Configuration
+# ============================================================================
+# Input directory containing mutation reports
+input_dir: "/data1/morrisq/yuj13/llm_genomics/mutation_report/mutation_status_final_noVAF_aggregate"
+
+# Output directory for predictions
+output_dir: "/data1/morrisq/yuj13/llm_genomics/mutation_output/mutation_status_final_noVAF_aggregate"
+
+# Prompt template file
+prompt_template: "prompts/prompt_mutation_prediction_CH.txt"
+# Alternatively: "prompts/prompt_mutation_prediction_CH_no_explain.txt" for faster inference
+
+# ============================================================================
+# Processing Options
+# ============================================================================
+# Include explanation in output (slower but more interpretable)
+include_explanation: true
+
+# Batch processing
+batch_size: null  # Process all files, or set to integer for specific batch
+
+# Resume from existing output
+resume: true
+
+# ============================================================================
+# API Call Configuration
+# ============================================================================
+# Retry settings for API calls
+retry:
+  max_retries: 20
+  initial_wait_time: 2  # seconds
+  max_wait_time: 60     # seconds
+  max_reprompt_attempts: 3  # Reprompting on parse errors
+
+# Rate limiting
+rate_limit:
+  requests_per_minute: 60
+  delay_between_calls: 1  # seconds
+
+# ============================================================================
+# Data Processing
+# ============================================================================
+# Required columns in input CSV
+required_columns:
+  - "SAMPLE_ID"
+  - "Mutation_Status"  # Ground truth
+  - "report_str"       # Mutation report text
+
+# Output columns (in addition to input columns)
+output_columns:
+  - "prediction"
+  - "prob"
+  - "explanation"  # Only if include_explanation is true
+
+# Column name mapping
+column_mapping:
+  Mutation_Status: "ground_truth"  # Rename for output
+
+# ============================================================================
+# Logging
+# ============================================================================
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "mutation_status_prediction.log"
+  format: "%(asctime)s - %(levelname)s - %(message)s"
+
+# ============================================================================
+# Validation
+# ============================================================================
+# Valid prediction values
+valid_predictions:
+  - "TUMOR-SOMATIC"
+  - "CHIP"
+  - "UNKNOWN"
+
+# Spelling variations to normalize
+normalize_predictions:
+  "TUMOUR-SOMATIC": "TUMOR-SOMATIC"

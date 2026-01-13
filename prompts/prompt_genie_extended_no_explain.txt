@@ -1,0 +1,19 @@
+Below is a tumor DNA sequencing report. Based on this information, what is the most likely (tumor_type1) and second most likely (tumor_type2) tumor type of the sample and their probabilities of being correct (prob1 and prob2 respectively, both as floating-point numbers between 0 and 1)?
+
+Reply with a structured JSON:
+
+```json
+{
+  "prediction1": "...",
+  "prob1": ...,
+  "prediction2": "...",
+  "prob2": ...
+}
+```
+
+Select tumor types from the following cancer types:
+['Adrenocortical Carcinoma', 'Anal Cancer', 'Bladder Cancer', 'Bone Cancer', 'Breast Cancer', 'CNS Cancer', 'Cervical Cancer', 'Colorectal Cancer',
+ 'Endometrial Cancer', 'Esophagogastric Cancer', 'Gastrointestinal Neuroendocrine Tumor', 'Gastrointestinal Stromal Tumor', 'Germ Cell Tumor', 'Glioma',
+ 'Head and Neck Cancer', 'Hepatobiliary Cancer', 'Melanoma', 'Mesothelioma', 'Nerve Sheath Tumor', 'Non-Small Cell Lung Cancer', 'Ovarian Cancer', 'Pancreatic Cancer',
+ 'Peripheral Nervous System', 'Prostate Cancer', 'Renal Cell Carcinoma', 'Retinoblastoma', 'Salivary Gland Cancer', 'Sex Cord Stromal Tumor', 'Skin Cancer, Non-Melanoma',
+ 'Small Cell Lung Cancer', 'Soft Tissue Sarcoma', 'Thymic Tumor', 'Thyroid Cancer', 'Uterine Sarcoma']
