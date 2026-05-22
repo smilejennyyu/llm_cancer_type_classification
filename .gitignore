@@ -208,15 +208,15 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Data
-.csv
-
 # Large data directories
-output/
 report/
-input_features/
 
 # Generated plots and figures
 *.png
 *.pdf
 *.svg
+
+# Data files (sample output directories are excluded from this rule)
+*.csv
+!input_features/*.csv
+!output/*.csv

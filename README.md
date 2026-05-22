@@ -1,6 +1,14 @@
-# LLM-Driven Cancer Type Classification
+# LLM-Based Genomic Classification
 
-This repository contains two main steps for working with genomic data and large-language-model (LLM)–based cancer type classification:
+This repository benchmarks large language models (LLMs) on three genomic classification tasks:
+
+| # | Task | Labels |
+|---|------|--------|
+| 1 | **Mutation Status Prediction** | TUMOR-SOMATIC vs CHIP (Clonal Hematopoiesis of Indeterminate Potential) |
+| 2 | **Oncogenic Driver Identification** | Oncogenic vs Benign |
+| 3 | **Cancer Type Classification** | 60+ cancer types from comprehensive genomic profiles |
+
+Each task follows the same three-step pipeline:
 
 ## Step 0: **Generate features**
 

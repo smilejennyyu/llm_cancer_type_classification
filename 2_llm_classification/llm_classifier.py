@@ -12,6 +12,7 @@ import pandas as pd
 import os
 import csv
 import json
+import re
 import sys
 import logging
 import time
@@ -181,7 +182,8 @@ def load_local_model(config: Dict):
         'device': device,
         'max_new_tokens': local_config.get('max_new_tokens', 256),
         'temperature': local_config.get('temperature', 0.7),
-        'top_p': local_config.get('top_p', 0.9)
+        'top_p': local_config.get('top_p', 0.9),
+        'use_json_prefill': local_config.get('use_json_prefill', False),
     }
 
 
@@ -207,7 +209,9 @@ def init_llm_client(config: Dict):
         claude_config = config['claude']
         return OpenAI(
             base_url=claude_config['base_url'],
-            api_key=claude_config['api_key']
+            api_key=claude_config['api_key'],
+            timeout=claude_config.get('timeout', 60),
+            max_retries=claude_config.get('max_retries', 3),
         ), claude_config['model_name']
 
     elif provider == 'local':
@@ -239,6 +243,7 @@ def make_local_model_inference(model_dict: Dict, messages: List[Dict]) -> str:
     max_new_tokens = model_dict['max_new_tokens']
     temperature = model_dict['temperature']
     top_p = model_dict['top_p']
+    use_json_prefill = model_dict.get('use_json_prefill', False)
 
     try:
         # Format messages for chat template
@@ -247,6 +252,12 @@ def make_local_model_inference(model_dict: Dict, messages: List[Dict]) -> str:
             tokenize=False,
             add_generation_prompt=True
         )
+
+        # DeepSeek-R1 and similar reasoning models: pre-fill the assistant turn
+        # with the JSON opening brace to bypass chain-of-thought and force
+        # immediate JSON output. Only ~50 tokens are needed to complete the JSON.
+        if use_json_prefill:
+            text = text + '{"prediction":'
 
         # Tokenize with attention to potential issues
         model_inputs = tokenizer([text], return_tensors="pt").to(device)
@@ -288,6 +299,12 @@ def make_local_model_inference(model_dict: Dict, messages: List[Dict]) -> str:
         ]
 
         response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+        # Reconstruct the full JSON when using pre-fill mode
+        if use_json_prefill:
+            response = response.strip()
+            if not response.startswith('{'):
+                response = '{"prediction":' + response
 
         return response
 
@@ -411,18 +428,54 @@ No markdown, no code blocks, just JSON."""
 
 
 def clean_json_response(model_reply: str) -> str:
-    """Clean up JSON formatting from model response."""
-    # Remove markdown code blocks
+    """Clean and extract JSON from model response.
+
+    Tries markdown stripping first, then regex-based extraction as a fallback
+    for models (e.g. DeepSeek-R1) that embed JSON inside reasoning text.
+    """
+    # Standard markdown stripping
     if '```json' in model_reply:
         model_reply = model_reply.split('```json')[1].split('```')[0]
     elif '```' in model_reply:
         model_reply = model_reply.replace('```', '')
-
-    # Remove leading 'json' text
     if model_reply.strip().startswith('json'):
         model_reply = model_reply.strip()[4:].strip()
+    model_reply = model_reply.strip()
 
-    return model_reply.strip()
+    # If it already parses cleanly, return as-is
+    try:
+        json.loads(model_reply)
+        return model_reply
+    except json.JSONDecodeError:
+        pass
+
+    # Regex fallback: try progressively looser patterns
+    patterns = [
+        r'\{[^{}]*"prediction"\s*:\s*"[^"]*"[^{}]*"prob"\s*:\s*[0-9.]+[^{}]*\}',
+        r'\{[^{}]*"prediction"[^}]*\}',
+        r'\{[^{}]*\}',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, model_reply, re.DOTALL)
+        if match:
+            candidate = match.group(0)
+            try:
+                json.loads(candidate)
+                return candidate
+            except json.JSONDecodeError:
+                continue
+
+    # Last resort: outermost braces
+    start, end = model_reply.find('{'), model_reply.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        candidate = model_reply[start:end + 1]
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+
+    return model_reply  # Return as-is; caller will raise JSONDecodeError
 
 
 def normalize_prediction(prediction: str, config: Dict) -> str:
@@ -453,15 +506,16 @@ def validate_and_parse_response(model_reply: str, sample_id: str,
         # Normalize prediction
         parsed.prediction = normalize_prediction(parsed.prediction, config)
 
-        # Validate prediction value
+        # Invalid predictions fall back to UNKNOWN rather than raising, so a
+        # single malformed response doesn't abort the whole sample.
         valid_predictions = config.get('valid_predictions', ['TUMOR-SOMATIC', 'CHIP', 'UNKNOWN'])
         if parsed.prediction not in valid_predictions:
-            raise ValueError(f"Invalid prediction: {parsed.prediction}")
+            logging.warning(f"Invalid prediction '{parsed.prediction}' for {sample_id}, defaulting to UNKNOWN")
+            parsed.prediction = 'UNKNOWN'
 
     elif task_type == 'oncogenic':
         parsed = OncogenicResponse.model_validate(parsed_json)
 
-        # Validate prediction value
         valid_predictions = config.get('valid_predictions', ['Oncogenic', 'Benign'])
         if parsed.prediction not in valid_predictions:
             raise ValueError(f"Invalid prediction: {parsed.prediction}")
@@ -477,15 +531,17 @@ def validate_and_parse_response(model_reply: str, sample_id: str,
             if parsed.prediction2 not in valid_cancer_types:
                 logging.warning(f"prediction2 '{parsed.prediction2}' not in valid cancer types for {sample_id}")
 
-    # Validate probability
-    if hasattr(parsed, 'prob') and not 0 <= parsed.prob <= 1:
-        raise ValueError(f"Probability must be between 0 and 1, got: {parsed.prob}")
-
-    if hasattr(parsed, 'prob1') and not 0 <= parsed.prob1 <= 1:
-        raise ValueError(f"prob1 must be between 0 and 1, got: {parsed.prob1}")
-
-    if hasattr(parsed, 'prob2') and not 0 <= parsed.prob2 <= 1:
-        raise ValueError(f"prob2 must be between 0 and 1, got: {parsed.prob2}")
+    # Clamp probabilities to [0, 1] rather than raising — some models (e.g.
+    # DeepSeek-R1) occasionally emit slightly out-of-range values.
+    for attr in ('prob', 'prob1', 'prob2'):
+        if hasattr(parsed, attr):
+            val = getattr(parsed, attr)
+            if val is None:
+                logging.warning(f"Missing {attr} for {sample_id}, defaulting to 0.5")
+                setattr(parsed, attr, 0.5)
+            elif not 0 <= val <= 1:
+                logging.warning(f"Out-of-range {attr}={val} for {sample_id}, clamping to 0.5")
+                setattr(parsed, attr, 0.5)
 
     return parsed
 
@@ -731,6 +787,13 @@ def process_csv_file(input_file: str, output_file: str, client,
 
     # Filter already completed samples
     data_to_process = data[~data['SAMPLE_ID'].isin(completed_samples)]
+
+    # TEST_N_SAMPLES: limit sample count for quick smoke-tests
+    test_n = config.get('test_n_samples', int(os.getenv('TEST_N_SAMPLES', 0)))
+    if test_n > 0:
+        data_to_process = data_to_process.head(test_n)
+        logging.info(f"[TEST MODE] Limited to {test_n} samples")
+
     logging.info(f"Processing {len(data_to_process)} remaining samples")
 
     if len(data_to_process) == 0:
@@ -763,11 +826,17 @@ def process_csv_file(input_file: str, output_file: str, client,
             if index > 0:
                 time.sleep(config['rate_limit']['delay_between_calls'])
 
-            # Process sample
-            result = process_sample_with_reprompt(
-                client, model_name, sample_id, report, ground_truth,
-                prompt_template, task_type, config, row_data
-            )
+            # Process sample — outer catch handles OOM / CUDA crashes for local models
+            try:
+                result = process_sample_with_reprompt(
+                    client, model_name, sample_id, report, ground_truth,
+                    prompt_template, task_type, config, row_data
+                )
+            except Exception as e:
+                logging.error(f"CRITICAL ERROR for {sample_id}: {e}")
+                logging.exception("Full traceback:")
+                result = build_error_result(ground_truth, row_data, task_type, config,
+                                            f"Critical: {e}")
 
             # Write to CSV
             writer.writerow(result)
@@ -779,6 +848,20 @@ def process_csv_file(input_file: str, output_file: str, client,
                 print(f"Progress: {index + 1}/{len(data_to_process)} samples processed")
 
     logging.info(f"Completed processing {input_file}")
+
+    # Post-run verification
+    try:
+        out_df = pd.read_csv(output_file)
+        n_in, n_out = len(data), len(out_df)
+        logging.info(f"Verification — input: {n_in}, output: {n_out}")
+        if n_out < n_in:
+            logging.warning(f"{n_in - n_out} samples missing from output")
+        if 'prediction' in out_df.columns:
+            n_err = (out_df['prediction'] == 'Error').sum()
+            if n_err:
+                logging.warning(f"{n_err} samples recorded as Error")
+    except Exception as e:
+        logging.warning(f"Could not verify output counts: {e}")
 
 
 def process_all_csv_files(config: Dict, client, model_name: str,

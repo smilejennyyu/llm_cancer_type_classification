@@ -23,6 +23,8 @@ claude:
   base_url: "http://tllihpcgpu1:4000/v1"  # Local proxy or API endpoint
   api_key: "litellm"  # or env variable name
   model_name: "bedrock-sonnet-37"
+  timeout: 60      # seconds
+  max_retries: 3
 
 # Local model settings (HuggingFace models: MedGemma, Qwen, DeepSeek, etc.)
 local:
@@ -35,9 +37,13 @@ local:
   quantization: true  # 4-bit quantization (only for CUDA)
 
   # Generation parameters
-  max_new_tokens: 256
-  temperature: 0.7
+  max_new_tokens: 256  # Use 64 for DeepSeek with use_json_prefill
+  temperature: 0.7     # Use 0.1 for DeepSeek with use_json_prefill
   top_p: 0.9
+
+  # DeepSeek-R1 specific: pre-fill assistant turn with {"prediction": to bypass
+  # chain-of-thought reasoning and produce immediate JSON output.
+  use_json_prefill: false  # set true for deepseek-ai/DeepSeek-R1-* models
 
 # ============================================================================
 # Input/Output Configuration
@@ -63,6 +69,9 @@ batch_size: null  # Process all files, or set to integer for specific batch
 
 # Resume from existing output
 resume: true
+
+# Limit sample count for testing (0 = process all; also reads TEST_N_SAMPLES env var)
+test_n_samples: 0
 
 # ============================================================================
 # API Call Configuration
