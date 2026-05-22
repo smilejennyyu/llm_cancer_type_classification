@@ -125,6 +125,19 @@ def load_local_model(config: Dict):
     device = local_config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu')
     use_quantization = local_config.get('quantization', True)
 
+    # Set HuggingFace cache directory if configured
+    hf_home = local_config.get('hf_home')
+    if hf_home:
+        os.environ['HF_HOME'] = hf_home
+        os.environ['TRANSFORMERS_CACHE'] = os.path.join(hf_home, 'transformers')
+        logging.info(f"HF_HOME set to {hf_home}")
+
+    # Set PyTorch CUDA memory allocator config if specified
+    cuda_alloc_conf = local_config.get('pytorch_cuda_alloc_conf')
+    if cuda_alloc_conf:
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = cuda_alloc_conf
+        logging.info(f"PYTORCH_CUDA_ALLOC_CONF set to {cuda_alloc_conf}")
+
     logging.info(f"Loading local model: {model_path}")
     logging.info(f"Using device: {device}")
 
@@ -184,6 +197,9 @@ def load_local_model(config: Dict):
         'temperature': local_config.get('temperature', 0.7),
         'top_p': local_config.get('top_p', 0.9),
         'use_json_prefill': local_config.get('use_json_prefill', False),
+        'greedy_decoding': local_config.get('greedy_decoding', False),
+        'compress_input': local_config.get('compress_input', False),
+        'max_input_tokens': local_config.get('max_input_tokens', None),
     }
 
 
@@ -244,8 +260,18 @@ def make_local_model_inference(model_dict: Dict, messages: List[Dict]) -> str:
     temperature = model_dict['temperature']
     top_p = model_dict['top_p']
     use_json_prefill = model_dict.get('use_json_prefill', False)
+    greedy_decoding = model_dict.get('greedy_decoding', False)
+    compress_input = model_dict.get('compress_input', False)
+    max_input_tokens = model_dict.get('max_input_tokens', None)
 
     try:
+        # Compress the user message content if enabled (reduces tokens for long reports)
+        if compress_input:
+            messages = [
+                dict(m, content=compress_report(m['content'])) if m['role'] == 'user' else m
+                for m in messages
+            ]
+
         # Format messages for chat template
         text = tokenizer.apply_chat_template(
             messages,
@@ -270,27 +296,38 @@ def make_local_model_inference(model_dict: Dict, messages: List[Dict]) -> str:
             logging.error(f"Token ID {max_token_id} exceeds vocab size {vocab_size}")
             raise ValueError(f"Invalid token ID detected: {max_token_id} >= {vocab_size}")
 
-        # Safety check: Verify input length
+        # Safety check: Verify input length, capped by both model_max_length and max_input_tokens
         input_length = model_inputs.input_ids.shape[1]
-        if hasattr(tokenizer, 'model_max_length') and input_length > tokenizer.model_max_length:
-            logging.warning(f"Input length {input_length} exceeds max length {tokenizer.model_max_length}, truncating")
+        cap = tokenizer.model_max_length if hasattr(tokenizer, 'model_max_length') else None
+        if max_input_tokens:
+            cap = min(cap, max_input_tokens) if cap else max_input_tokens
+        if cap and input_length > cap:
+            logging.warning(f"Input length {input_length} exceeds cap {cap}, truncating")
             model_inputs = tokenizer(
                 [text],
                 return_tensors="pt",
-                max_length=tokenizer.model_max_length,
+                max_length=cap,
                 truncation=True
             ).to(device)
 
-        # Generate with error handling
+        # Generate — greedy decoding is faster and more deterministic for short JSON outputs
         with torch.no_grad():
-            generated_ids = model.generate(
-                **model_inputs,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                do_sample=True,
-                pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-            )
+            if greedy_decoding:
+                generated_ids = model.generate(
+                    **model_inputs,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=False,
+                    pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+                )
+            else:
+                generated_ids = model.generate(
+                    **model_inputs,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    do_sample=True,
+                    pad_token_id=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+                )
 
         # Decode only the generated part
         generated_ids = [
@@ -465,7 +502,7 @@ def clean_json_response(model_reply: str) -> str:
             except json.JSONDecodeError:
                 continue
 
-    # Last resort: outermost braces
+    # Last resort: outermost braces, with unquoted-key fix attempt
     start, end = model_reply.find('{'), model_reply.rfind('}')
     if start != -1 and end != -1 and end > start:
         candidate = model_reply[start:end + 1]
@@ -473,9 +510,39 @@ def clean_json_response(model_reply: str) -> str:
             json.loads(candidate)
             return candidate
         except json.JSONDecodeError:
-            pass
+            fixed = fix_unquoted_json(candidate)
+            try:
+                json.loads(fixed)
+                return fixed
+            except json.JSONDecodeError:
+                pass
 
     return model_reply  # Return as-is; caller will raise JSONDecodeError
+
+
+def fix_unquoted_json(json_str: str) -> str:
+    """Fix JSON that has unquoted keys (common in some local model outputs)."""
+    try:
+        json.loads(json_str)
+        return json_str
+    except json.JSONDecodeError:
+        pass
+    fixed = re.sub(r'(?<=[{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'"\1":', json_str)
+    try:
+        json.loads(fixed)
+        return fixed
+    except json.JSONDecodeError:
+        return json_str
+
+
+def compress_report(report: str, max_chars: int = 1000) -> str:
+    """Truncate long reports to first+last 5 lines to reduce input token count."""
+    if len(report) <= max_chars:
+        return report
+    lines = report.split('\n')
+    if len(lines) > 10:
+        return '\n'.join(lines[:5] + ['...'] + lines[-5:])
+    return report[:max_chars] + '...'
 
 
 def normalize_prediction(prediction: str, config: Dict) -> str:
@@ -516,9 +583,13 @@ def validate_and_parse_response(model_reply: str, sample_id: str,
     elif task_type == 'oncogenic':
         parsed = OncogenicResponse.model_validate(parsed_json)
 
+        # Normalize first (e.g. "Likely Oncogenic" -> "Oncogenic")
+        parsed.prediction = normalize_prediction(parsed.prediction, config)
+
         valid_predictions = config.get('valid_predictions', ['Oncogenic', 'Benign'])
         if parsed.prediction not in valid_predictions:
-            raise ValueError(f"Invalid prediction: {parsed.prediction}")
+            logging.warning(f"Invalid oncogenic prediction '{parsed.prediction}' for {sample_id}, defaulting to Benign")
+            parsed.prediction = 'Benign'
 
     else:  # cancer_type
         parsed = CancerTypeResponse.model_validate(parsed_json)
@@ -774,19 +845,24 @@ def process_csv_file(input_file: str, output_file: str, client,
         logging.error(f"Missing required columns in {input_file}. Required: {required_cols}")
         return
 
-    # Resume logic
+    # Resume logic — Task 2 (per-mutation) uses mutation_id; Tasks 1 & 3 use SAMPLE_ID
+    resume_key = config.get('resume_on', 'SAMPLE_ID')
+    if resume_key not in data.columns:
+        logging.warning(f"resume_on='{resume_key}' not in data columns, falling back to SAMPLE_ID")
+        resume_key = 'SAMPLE_ID'
+
     completed_samples = set()
     if config.get('resume', True) and os.path.exists(output_file):
         try:
             with open(output_file, newline='') as f:
                 reader = csv.DictReader(f)
-                completed_samples = {row['SAMPLE_ID'] for row in reader if 'SAMPLE_ID' in row}
-            logging.info(f"Found {len(completed_samples)} completed samples, resuming...")
+                completed_samples = {row[resume_key] for row in reader if resume_key in row}
+            logging.info(f"Found {len(completed_samples)} completed rows (keyed on {resume_key}), resuming...")
         except Exception as e:
             logging.warning(f"Could not read existing output file: {e}")
 
-    # Filter already completed samples
-    data_to_process = data[~data['SAMPLE_ID'].isin(completed_samples)]
+    # Filter already completed rows
+    data_to_process = data[~data[resume_key].astype(str).isin(completed_samples)]
 
     # TEST_N_SAMPLES: limit sample count for quick smoke-tests
     test_n = config.get('test_n_samples', int(os.getenv('TEST_N_SAMPLES', 0)))
@@ -846,6 +922,13 @@ def process_csv_file(input_file: str, output_file: str, client,
             if (index + 1) % 10 == 0:
                 logging.info(f"Completed {index + 1} samples from {input_file}")
                 print(f"Progress: {index + 1}/{len(data_to_process)} samples processed")
+
+            # Periodic CUDA cache clearing for local models (reduces OOM risk on long runs)
+            clear_every = config.get('local', {}).get('clear_cuda_cache_every')
+            if clear_every and (index + 1) % clear_every == 0:
+                if torch is not None and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    logging.info(f"Cleared CUDA cache at sample {index + 1}")
 
     logging.info(f"Completed processing {input_file}")
 

@@ -29,9 +29,32 @@ local:
   model_name: "google/medgemma-27b-it"
   device: "cuda"
   quantization: true
-  max_new_tokens: 256
+
+  # Generation parameters
+  max_new_tokens: 150   # Short JSON outputs need fewer tokens; use 64 with use_json_prefill
   temperature: 0.7
   top_p: 0.9
+
+  # Greedy decoding: faster and more deterministic for short JSON classification outputs
+  greedy_decoding: false  # set true for medgemma/qwen (do_sample=False, temperature ignored)
+
+  # Compress long mutation reports to first+last 5 lines before sending to the model
+  compress_input: false  # set true to speed up inference on long reports
+
+  # Hard cap on input token count (prevents OOM on very long reports)
+  max_input_tokens: null  # e.g. 512
+
+  # Clear CUDA cache every N samples to prevent memory fragmentation
+  clear_cuda_cache_every: 100
+
+  # HuggingFace model cache directory (avoids downloading to home directory)
+  hf_home: null  # e.g. "/data1/morrisq/yuj13/llm_genomics/huggingface_model"
+
+  # PyTorch CUDA memory allocator (recommended for long runs)
+  pytorch_cuda_alloc_conf: "expandable_segments:True"
+
+  # DeepSeek-R1 specific JSON pre-fill
+  use_json_prefill: false
 
 # ============================================================================
 # Input/Output Configuration
@@ -58,6 +81,13 @@ batch_size: null
 # Resume from existing output
 resume: true
 
+# Task 2 is per-mutation: resume on mutation_id, not SAMPLE_ID
+# (multiple mutations share the same SAMPLE_ID)
+resume_on: mutation_id
+
+# Limit sample count for testing (0 = process all; also reads TEST_N_SAMPLES env var)
+test_n_samples: 0
+
 # ============================================================================
 # API Call Configuration
 # ============================================================================
@@ -79,8 +109,9 @@ rate_limit:
 # Required columns in input CSV
 required_columns:
   - "SAMPLE_ID"
-  - "ONCOGENIC"    # Ground truth
-  - "report_str"   # Mutation report text
+  - "mutation_id"        # Per-mutation identifier (needed for correct resumption)
+  - "ONCOGENIC"          # Ground truth
+  - "report_str"         # Mutation report text
 
 # Output columns
 output_columns:
@@ -102,7 +133,15 @@ logging:
 # ============================================================================
 # Validation
 # ============================================================================
-# Valid prediction values
+# Valid prediction values — kept narrow to match what the prompt asks for
 valid_predictions:
   - "Oncogenic"
   - "Benign"
+
+# Normalize model output variations to canonical labels before validation
+normalize_predictions:
+  "Likely Oncogenic": "Oncogenic"
+  "Likely Neutral":   "Benign"
+  "Likely Benign":    "Benign"
+  "Pathogenic":       "Oncogenic"
+  "VUS":              "Benign"
