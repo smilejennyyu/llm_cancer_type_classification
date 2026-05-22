@@ -6,7 +6,7 @@ This repository benchmarks large language models (LLMs) on three genomic classif
 |---|------|--------|
 | 1 | **Mutation Status Prediction** | TUMOR-SOMATIC vs CHIP (Clonal Hematopoiesis of Indeterminate Potential) |
 | 2 | **Oncogenic Driver Identification** | Oncogenic vs Benign |
-| 3 | **Cancer Type Classification** | 60+ cancer types from comprehensive genomic profiles |
+| 3 | **Cancer Type Classification** | 34 cancer types from comprehensive genomic profiles |
 
 Each task follows the same three-step pipeline:
 
