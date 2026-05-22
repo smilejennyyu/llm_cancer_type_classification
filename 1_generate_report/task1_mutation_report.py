@@ -255,7 +255,8 @@ def filter_genie_for_msk_patients(config):
 
 
 def generate_mutation_reports(data_directory, sample_data, output_directory, config,
-                              include_vaf=True, aggregate=True, mutation_status='TUMOR-SOMATIC'):
+                              mutations_file=None, include_vaf=True, aggregate=True,
+                              mutation_status='TUMOR-SOMATIC'):
     """Generate mutation reports from data."""
     logging.info("\n" + "=" * 80)
     logging.info(f"Generating mutation reports (VAF={include_vaf}, Aggregate={aggregate})")
@@ -265,9 +266,12 @@ def generate_mutation_reports(data_directory, sample_data, output_directory, con
     required_cols = config['required_columns']
     report_features = config['report_features']
 
+    if mutations_file is None:
+        mutations_file = config["input_files"]["mutations_extended"]
+
     # Read mutations
     mutations = pd.read_csv(
-        f'{data_directory}/{config["input_files"]["mutations_extended"]}',
+        f'{data_directory}/{mutations_file}',
         sep='\t',
         comment='#',
         low_memory=False
@@ -280,26 +284,42 @@ def generate_mutation_reports(data_directory, sample_data, output_directory, con
         (mutations['t_alt_count'] + mutations['t_ref_count'])
     )
 
+    # Cast position columns to int for locus string building
+    mutations['Start_Position'] = mutations['Start_Position'].astype(int)
+    mutations['End_Position'] = mutations['End_Position'].astype(int)
+
     # Clean data
     mutations = mutations.dropna(subset=required_cols).reset_index(drop=True)
     mutations = mutations.drop_duplicates(subset=required_cols).reset_index(drop=True)
 
-    # Create report string
+    # Build locus string: chr17:7577120 for SNVs, chr17:7577120-7577125 for indels
+    locus = (
+        'chr' + mutations['Chromosome'].astype(str)
+        + ':' + mutations['Start_Position'].astype(str)
+        + np.where(
+            mutations['Start_Position'] == mutations['End_Position'],
+            '',
+            '-' + mutations['End_Position'].astype(str),
+        )
+    )
+
+    # Create report string — locus is always included; VAF is optional
     if include_vaf:
         mutations["report_str"] = (
             mutations["Hugo_Symbol"] + " "
-            + mutations['Variant_Classification'].str.replace('_', ' ')
-            + " ("
-            + mutations["Reference_Allele"] + ">" + mutations["Tumor_Seq_Allele2"] + ")"
-            + ", Tumor Variant Allele Fraction: "
-            + mutations["t_VAF"].astype(str)
+            + mutations['Variant_Classification'].str.replace('_', ' ') + " "
+            + mutations['Variant_Type']
+            + " (" + mutations["Reference_Allele"] + ">" + mutations["Tumor_Seq_Allele2"] + ")"
+            + " at " + locus
+            + ", Tumor Variant Allele Fraction: " + mutations["t_VAF"].astype(str)
         )
     else:
         mutations["report_str"] = (
             mutations["Hugo_Symbol"] + " "
-            + mutations['Variant_Classification'].str.replace('_', ' ')
-            + " ("
-            + mutations["Reference_Allele"] + ">" + mutations["Tumor_Seq_Allele2"] + ")"
+            + mutations['Variant_Classification'].str.replace('_', ' ') + " "
+            + mutations['Variant_Type']
+            + " (" + mutations["Reference_Allele"] + ">" + mutations["Tumor_Seq_Allele2"] + ")"
+            + " at " + locus
         )
 
     mutations["PATIENT_ID"] = mutations["Tumor_Sample_Barcode"].str.split("-", n=2).str[:2].str.join("-")
@@ -341,12 +361,11 @@ def generate_mutation_reports(data_directory, sample_data, output_directory, con
     )
     mutations_report_str = mutations_report_str.dropna(subset=report_features).reset_index(drop=True)
 
-    mutations_report_str["report_str"] = (
-        mutations_report_str["report_str"]
-        + "\nCANCER_TYPE: " + mutations_report_str["CANCER_TYPE"].fillna("").astype(str)
-        + "\nCANCER_TYPE_DETAILED: " + mutations_report_str["CANCER_TYPE_DETAILED"].fillna("").astype(str)
-        + "\n"
-    )
+    # Append report features dynamically from config
+    for feat in report_features:
+        mutations_report_str["report_str"] += f"\n{feat}: " + mutations_report_str[feat].fillna("").astype(str)
+    mutations_report_str["report_str"] += "\n"
+
     mutations_report_str['Mutation_Status'] = mutation_status
 
     logging.info(f"Generated {len(mutations_report_str)} mutation reports")
@@ -425,6 +444,7 @@ def main():
             sample_data,
             output_dir,
             config,
+            mutations_file=config['input_files']['mutations_extended'],
             include_vaf=include_vaf,
             aggregate=do_aggregate,
             mutation_status=config['mutation_status']['genie']
@@ -453,6 +473,7 @@ def main():
             sample_data_ch,
             output_dir,
             config,
+            mutations_file=config['input_files']['mutations'],
             include_vaf=include_vaf,
             aggregate=do_aggregate,
             mutation_status=config['mutation_status']['msk_ch']

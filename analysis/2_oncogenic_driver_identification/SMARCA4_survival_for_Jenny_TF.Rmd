@@ -1,0 +1,601 @@
+---
+title: "Jenny survival analysis NSCLC genes"
+author: "Tom Fu & Jenny Yu"
+date: "2025-10-24"
+output: html_document
+params:
+  gene: "SMARCA4"
+  data_file: "/data1/morrisq/yuj13/llm_genomics/zeroshot_cancertype/df_patient_SMARCA4_claude_sonnet_37.csv"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Set gene name from parameters
+GENE <- params$gene
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+# Install if needed
+# install.packages("survival")
+# install.packages("survminer")
+
+# Try to load required system library
+Sys.setenv(LD_LIBRARY_PATH = paste(
+  Sys.getenv("LD_LIBRARY_PATH"),
+  "/usr/lib64",
+  "/lib64",
+  sep = ":"
+))
+
+library(survival)
+# survminer may fail due to xml2 dependency - load conditionally
+survminer_available <- require(survminer, quietly = TRUE)
+if (!survminer_available) {
+  warning("survminer not available - plots may not work. Using base survival plots instead.")
+}
+```
+
+
+
+```{r}
+cat("Reading data from:", params$data_file, "\n")
+df <- read.csv(params$data_file, stringsAsFactors = FALSE)
+cat("Loaded", nrow(df), "patients with", ncol(df), "columns\n")
+```
+
+```{r}
+# Create column name dynamically based on gene
+gene_col <- paste0(GENE, "_FINAL_LABEL")
+
+# Check if the column exists, if not print available columns
+if (!gene_col %in% colnames(df)) {
+  cat("Error: Column", gene_col, "not found in dataframe.\n")
+  cat("Available columns containing", GENE, ":\n")
+  matching_cols <- grep(GENE, colnames(df), value = TRUE, ignore.case = TRUE)
+  print(matching_cols)
+  cat("\nAll columns in dataframe:\n")
+  print(colnames(df))
+  stop(paste("Column", gene_col, "does not exist. Please check the column name."))
+}
+
+df$group <- factor(df[[gene_col]],
+                   levels = c("no_mutation", paste0(GENE, "_mut"), "LLM_benign", "LLM_oncogenic"))
+
+# Verify the group was created successfully
+cat("\nGroup distribution:\n")
+print(table(df$group, useNA = "ifany"))
+```
+
+## Hypergeometric Test
+
+```{r}
+# Hypergeometric test for enrichment of mutations in deceased patients
+# Create binary variables for mutation status and survival outcome
+df$has_mutation <- ifelse(df$group %in% c(paste0(GENE, "_mut"), "LLM_oncogenic"), 1, 0)
+df$deceased <- df$OS_STATUS
+
+# Create contingency table
+# Rows: deceased (1) vs alive (0)
+# Cols: mutation (1) vs no mutation (0)
+contingency_table <- table(df$deceased, df$has_mutation)
+print("Contingency Table (Deceased vs Mutation Status):")
+print(contingency_table)
+
+# Hypergeometric test parameters
+# q = number of deceased patients with mutations - 1
+# m = total number of patients with mutations
+# n = total number of patients without mutations
+# k = total number of deceased patients
+
+if (sum(df$has_mutation) > 0 && sum(df$deceased) > 0) {
+  deceased_with_mut <- sum(df$deceased == 1 & df$has_mutation == 1)
+  total_with_mut <- sum(df$has_mutation == 1)
+  total_without_mut <- sum(df$has_mutation == 0)
+  total_deceased <- sum(df$deceased == 1)
+
+  # Hypergeometric test (upper tail - testing for over-representation)
+  hyper_pval <- phyper(deceased_with_mut - 1,
+                       total_with_mut,
+                       total_without_mut,
+                       total_deceased,
+                       lower.tail = FALSE)
+
+  cat("\nHypergeometric Test Results:\n")
+  cat(sprintf("Deceased with mutation: %d\n", deceased_with_mut))
+  cat(sprintf("Total with mutation: %d\n", total_with_mut))
+  cat(sprintf("Total without mutation: %d\n", total_without_mut))
+  cat(sprintf("Total deceased: %d\n", total_deceased))
+  cat(sprintf("P-value (enrichment): %.4e\n", hyper_pval))
+
+  # Fisher's exact test as alternative (two-sided)
+  fisher_result <- fisher.test(contingency_table)
+  cat(sprintf("\nFisher's Exact Test P-value: %.4e\n", fisher_result$p.value))
+  cat(sprintf("Odds Ratio: %.4f\n", fisher_result$estimate))
+} else {
+  cat("\nInsufficient data for hypergeometric test\n")
+}
+```
+
+## Cox Proportional Hazards Model
+
+```{r}
+# Cox proportional hazards model
+cox_model <- coxph(Surv(OS_MONTHS, OS_STATUS) ~ group, data = df)
+
+cat("\n=== Cox Proportional Hazards Model ===\n")
+print(summary(cox_model))
+
+# Extract hazard ratios with confidence intervals
+cox_summary <- summary(cox_model)
+hr_table <- data.frame(
+  Group = rownames(cox_summary$conf.int),
+  HR = cox_summary$conf.int[, "exp(coef)"],
+  Lower_95 = cox_summary$conf.int[, "lower .95"],
+  Upper_95 = cox_summary$conf.int[, "upper .95"],
+  P_value = cox_summary$coefficients[, "Pr(>|z|)"]
+)
+
+cat("\nHazard Ratios (reference: no_mutation):\n")
+print(hr_table)
+
+# Test proportional hazards assumption
+cat("\n=== Test of Proportional Hazards Assumption ===\n")
+ph_test <- cox.zph(cox_model)
+print(ph_test)
+
+# Log-rank test
+cat("\n=== Log-rank Test ===\n")
+logrank_test <- survdiff(Surv(OS_MONTHS, OS_STATUS) ~ group, data = df)
+print(logrank_test)
+cat(sprintf("\nLog-rank P-value: %.4e\n",
+            pchisq(logrank_test$chisq,
+                   length(logrank_test$n) - 1,
+                   lower.tail = FALSE)))
+```
+
+### Pairwise Comparisons
+
+```{r}
+# Pairwise log-rank tests
+cat("\n=== Pairwise Log-rank Tests ===\n")
+group_levels <- levels(df$group)
+n_groups <- length(group_levels)
+
+# Create matrix to store p-values
+pairwise_matrix <- matrix(NA, nrow = n_groups, ncol = n_groups)
+rownames(pairwise_matrix) <- group_levels
+colnames(pairwise_matrix) <- group_levels
+
+# Perform pairwise comparisons
+for (i in 1:(n_groups-1)) {
+  for (j in (i+1):n_groups) {
+    # Subset data for these two groups
+    subset_data <- df[df$group %in% c(group_levels[i], group_levels[j]), ]
+    subset_data$group <- droplevels(subset_data$group)
+
+    # Perform log-rank test
+    pairwise_test <- survdiff(Surv(OS_MONTHS, OS_STATUS) ~ group, data = subset_data)
+    pval <- pchisq(pairwise_test$chisq, df = 1, lower.tail = FALSE)
+
+    # Store in matrix
+    pairwise_matrix[i, j] <- pval
+    pairwise_matrix[j, i] <- pval
+
+    cat(sprintf("%s vs %s: p = %.4e\n", group_levels[i], group_levels[j], pval))
+  }
+}
+
+# Pairwise Cox models
+cat("\n=== Pairwise Cox Model Comparisons ===\n")
+pairwise_hr_matrix <- matrix(NA, nrow = n_groups, ncol = n_groups)
+pairwise_hr_lower <- matrix(NA, nrow = n_groups, ncol = n_groups)
+pairwise_hr_upper <- matrix(NA, nrow = n_groups, ncol = n_groups)
+pairwise_cox_pval <- matrix(NA, nrow = n_groups, ncol = n_groups)
+rownames(pairwise_hr_matrix) <- group_levels
+colnames(pairwise_hr_matrix) <- group_levels
+rownames(pairwise_hr_lower) <- group_levels
+colnames(pairwise_hr_lower) <- group_levels
+rownames(pairwise_hr_upper) <- group_levels
+colnames(pairwise_hr_upper) <- group_levels
+rownames(pairwise_cox_pval) <- group_levels
+colnames(pairwise_cox_pval) <- group_levels
+
+for (i in 1:(n_groups-1)) {
+  for (j in (i+1):n_groups) {
+    # Subset data for these two groups
+    subset_data <- df[df$group %in% c(group_levels[i], group_levels[j]), ]
+    subset_data$group <- droplevels(subset_data$group)
+
+    # Perform Cox regression
+    cox_pair <- coxph(Surv(OS_MONTHS, OS_STATUS) ~ group, data = subset_data)
+    cox_summ <- summary(cox_pair)
+
+    hr <- exp(coef(cox_pair))
+    hr_lower <- cox_summ$conf.int[, "lower .95"]
+    hr_upper <- cox_summ$conf.int[, "upper .95"]
+    pval <- cox_summ$coefficients[, "Pr(>|z|)"]
+
+    # Store HRs (j vs i, so row i has higher hazard)
+    pairwise_hr_matrix[i, j] <- hr
+    pairwise_hr_matrix[j, i] <- 1/hr  # Reciprocal for opposite comparison
+
+    pairwise_hr_lower[i, j] <- hr_lower
+    pairwise_hr_upper[i, j] <- hr_upper
+    pairwise_hr_lower[j, i] <- 1/hr_upper
+    pairwise_hr_upper[j, i] <- 1/hr_lower
+
+    pairwise_cox_pval[i, j] <- pval
+    pairwise_cox_pval[j, i] <- pval
+
+    cat(sprintf("%s vs %s: HR = %.2f (%.2f-%.2f), p = %.4e\n",
+                group_levels[j], group_levels[i], hr, hr_lower, hr_upper, pval))
+  }
+}
+```
+
+### Pairwise Comparison Heatmap
+
+```{r}
+# Create heatmap of pairwise p-values
+pdf(paste0("./pairwise_logrank_", GENE, ".pdf"), width=10, height=9)
+
+par(mar = c(8, 8, 4, 6))
+
+# Create color palette (white = not significant, red = significant)
+color_breaks <- c(0, 0.001, 0.01, 0.05, 1)
+colors <- c("darkred", "red", "orange", "yellow")
+
+# Create matrix for plotting (log transform for better visualization)
+plot_matrix <- -log10(pairwise_matrix)
+diag(plot_matrix) <- NA
+
+# Create the heatmap
+image(1:n_groups, 1:n_groups, plot_matrix,
+      col = heat.colors(20, rev = TRUE),
+      xlab = "", ylab = "",
+      main = paste("Pairwise Log-rank Test P-values -", GENE, "\n(-log10 scale)"),
+      axes = FALSE,
+      cex.main = 1.6)
+
+# Add grid
+abline(h = 0.5:(n_groups+0.5), col = "gray30", lwd = 0.5)
+abline(v = 0.5:(n_groups+0.5), col = "gray30", lwd = 0.5)
+
+# Add axis labels
+axis(1, at = 1:n_groups, labels = group_levels, las = 2, cex.axis = 1.2)
+axis(2, at = 1:n_groups, labels = group_levels, las = 2, cex.axis = 1.2)
+
+# Add p-values as text
+for (i in 1:n_groups) {
+  for (j in 1:n_groups) {
+    if (i != j && !is.na(pairwise_matrix[i, j])) {
+      pval <- pairwise_matrix[i, j]
+      text_color <- ifelse(pval < 0.05, "white", "black")
+
+      # Format p-value
+      if (pval < 0.001) {
+        pval_text <- sprintf("%.1e", pval)
+      } else {
+        pval_text <- sprintf("%.3f", pval)
+      }
+
+      text(j, i, pval_text, cex = 1.0, col = text_color, font = 2)
+    }
+  }
+}
+
+# Add color legend
+legend_x <- n_groups + 0.8
+legend_y <- seq(1, n_groups, length.out = 5)
+legend_labels <- c("< 0.001", "< 0.01", "< 0.05", "≥ 0.05")
+
+legend("right",
+       legend = c("p < 0.001", "p < 0.01", "p < 0.05", "p ≥ 0.05"),
+       fill = c("darkred", "red", "orange", "yellow"),
+       title = "Significance",
+       cex = 1.1,
+       xpd = TRUE,
+       inset = c(-0.2, 0))
+
+dev.off()
+cat("Pairwise comparison heatmap saved to:", paste0("./pairwise_logrank_", GENE, ".pdf\n"))
+```
+
+### Combined Pairwise HR and P-value Heatmap
+
+```{r}
+# Create combined heatmap showing both HRs and p-values
+pdf(paste0("./pairwise_combined_", GENE, ".pdf"), width=12, height=10)
+
+par(mar = c(8, 8, 4, 2))
+
+# Create color scale based on HR values
+# HR < 1 (protective) = blue, HR = 1 (no effect) = white, HR > 1 (risk) = red
+hr_for_color <- log2(pairwise_hr_matrix)
+hr_for_color[is.na(hr_for_color)] <- 0
+diag(hr_for_color) <- 0
+
+# Color palette: blue for protective, white for neutral, red for increased risk
+color_ramp <- colorRampPalette(c("blue", "white", "red"))(100)
+hr_range <- max(abs(hr_for_color), na.rm = TRUE)
+color_breaks <- seq(-hr_range, hr_range, length.out = 101)
+
+# Create the heatmap
+image(1:n_groups, 1:n_groups, t(hr_for_color),
+      col = color_ramp,
+      xlab = "", ylab = "",
+      main = paste("Pairwise Hazard Ratios with P-values -", GENE, "\n(Row vs Column)"),
+      axes = FALSE,
+      cex.main = 1.6,
+      zlim = c(-hr_range, hr_range))
+
+# Add grid
+abline(h = 0.5:(n_groups+0.5), col = "gray30", lwd = 1)
+abline(v = 0.5:(n_groups+0.5), col = "gray30", lwd = 1)
+
+# Add axis labels
+axis(1, at = 1:n_groups, labels = group_levels, las = 2, cex.axis = 1.3)
+axis(2, at = 1:n_groups, labels = group_levels, las = 2, cex.axis = 1.3)
+
+# Add HR values and p-values as text
+for (i in 1:n_groups) {
+  for (j in 1:n_groups) {
+    if (i != j && !is.na(pairwise_hr_matrix[i, j])) {
+      hr <- pairwise_hr_matrix[i, j]
+      hr_low <- pairwise_hr_lower[i, j]
+      hr_up <- pairwise_hr_upper[i, j]
+      pval <- pairwise_cox_pval[i, j]
+
+      # Determine text color based on background
+      bg_color_intensity <- abs(hr_for_color[j, i])
+      text_color <- ifelse(bg_color_intensity > 0.5, "white", "black")
+
+      # Format text: HR on top, p-value below
+      # HR text
+      hr_text <- sprintf("HR=%.2f", hr)
+      text(j, i + 0.15, hr_text, cex = 1.1, col = text_color, font = 2)
+
+      # CI text
+      ci_text <- sprintf("(%.2f-%.2f)", hr_low, hr_up)
+      text(j, i, ci_text, cex = 0.9, col = text_color)
+
+      # P-value text with significance markers
+      if (pval < 0.001) {
+        pval_text <- "p<0.001***"
+      } else if (pval < 0.01) {
+        pval_text <- sprintf("p=%.3f**", pval)
+      } else if (pval < 0.05) {
+        pval_text <- sprintf("p=%.3f*", pval)
+      } else {
+        pval_text <- sprintf("p=%.3f", pval)
+      }
+      text(j, i - 0.15, pval_text, cex = 0.85, col = text_color)
+    }
+  }
+}
+
+# Add diagonal labels
+for (i in 1:n_groups) {
+  text(i, i, "—", cex = 2, col = "gray50")
+}
+
+# Add legend for colors
+legend_x <- n_groups * 1.15
+legend_y_vals <- seq(1, n_groups, length.out = 5)
+legend("right",
+       legend = c("HR > 2 (Increased risk)",
+                  "HR = 1 (No effect)",
+                  "HR < 0.5 (Protective)"),
+       fill = c("red", "white", "blue"),
+       title = "Hazard Ratio",
+       cex = 1.1,
+       xpd = TRUE)
+
+# Add note about significance
+mtext("*, **, *** indicate p<0.05, p<0.01, p<0.001", side = 1, line = 7, cex = 0.9)
+
+dev.off()
+cat("Combined pairwise heatmap saved to:", paste0("./pairwise_combined_", GENE, ".pdf\n"))
+```
+
+### Cox Model Forest Plot
+
+```{r}
+# Create forest plot for Cox model hazard ratios
+pdf(paste0("./cox_survival_", GENE, ".pdf"), width=14, height=10)
+
+par(mar = c(6, 14, 5, 10))
+
+# Get HR data
+hrs <- hr_table$HR
+lower <- hr_table$Lower_95
+upper <- hr_table$Upper_95
+pvals <- hr_table$P_value
+group_names <- gsub("group", "", hr_table$Group)
+
+# Create plot
+n_groups <- nrow(hr_table)
+y_pos <- n_groups:1
+
+# Calculate better x-axis limits
+x_min <- min(c(0.5, lower*0.9))
+x_max <- max(c(2.5, upper*1.1))
+
+# Set up plot area with more space
+plot(1, type="n",
+     xlim=c(x_min, x_max),
+     ylim=c(0.3, n_groups + 0.7),
+     xlab="Hazard Ratio (95% CI)",
+     ylab="",
+     main=paste("Cox Proportional Hazards Model -", GENE, "\n(Reference: no_mutation)"),
+     yaxt="n",
+     log="x",
+     cex.lab=1.8,
+     cex.main=2.0,
+     cex.axis=1.6)
+
+# Add vertical line at HR = 1
+abline(v=1, lty=2, col="gray60", lwd=3)
+
+# Add points and error bars
+for (i in 1:n_groups) {
+  # Error bars
+  arrows(lower[i], y_pos[i], upper[i], y_pos[i],
+         angle=90, code=3, length=0.1, lwd=3, col="darkblue")
+
+  # Points
+  points(hrs[i], y_pos[i], pch=18, cex=3.5, col="darkred")
+}
+
+# Add group labels on the left with larger font
+axis(2, at=y_pos, labels=group_names, las=1, cex.axis=1.8)
+
+# Add HR values and p-values on the right side, positioned better
+for (i in 1:n_groups) {
+  # HR and CI on one line
+  text(x_max * 0.98, y_pos[i] + 0.15,
+       sprintf("HR = %.2f (%.2f - %.2f)", hrs[i], lower[i], upper[i]),
+       pos=2, cex=1.4, font=2)
+
+  # P-value on second line
+  text(x_max * 0.98, y_pos[i] - 0.15,
+       sprintf("p = %.3e", pvals[i]),
+       pos=2, cex=1.3)
+}
+
+# Add grid
+grid(nx=NULL, ny=NA, col="gray90")
+
+dev.off()
+cat("Cox model forest plot saved to:", paste0("./cox_survival_", GENE, ".pdf\n"))
+```
+
+## Kaplan-Meier Survival Curves
+
+```{r}
+fit <- survfit(Surv(OS_MONTHS, OS_STATUS) ~ group, data = df)
+
+# Colors matching sample (edit as desired)
+curve_colors <- c("darkseagreen", "firebrick4", "deepskyblue1", "deeppink1")
+legend_labels <- c("no_mutation", paste0(GENE, "_mut"), "LLM_benign", "LLM_oncogenic")
+
+# Calculate log-rank p-value for display
+logrank_pval <- pchisq(logrank_test$chisq,
+                       length(logrank_test$n) - 1,
+                       lower.tail = FALSE)
+
+pdf(paste0("./km_survival_", GENE, ".pdf"), width=10, height=12)
+
+# Try ggsurvplot first, fall back to base R if it fails
+plot_success <- FALSE
+if (survminer_available) {
+  tryCatch({
+    print(ggsurvplot(
+      fit,
+      data = df,
+      risk.table = TRUE,
+      pval = TRUE,  # Show p-value on plot
+      pval.method = TRUE,  # Show test method
+      pval.coord = c(0, 0.15),  # Position of p-value
+      pval.size = 6,  # Larger p-value text
+      conf.int = FALSE,
+      risk.table.height = 0.3,
+      legend.labs = legend_labels,
+      legend.title = "",
+      palette = curve_colors,
+      xlab = "Months",
+      ylab = "Survival probability",
+      surv.scale = "percent",
+      break.time.by = 20,
+      risk.table.y.text.col = TRUE,
+      risk.table.y.text = FALSE,
+      font.main = c(18, "bold"),
+      font.x = c(16, "bold"),
+      font.y = c(16, "bold"),
+      font.tickslab = c(14, "plain"),
+      font.legend = c(14, "plain"),
+      risk.table.fontsize = 5
+    ))
+    plot_success <- TRUE
+  }, error = function(e) {
+    cat("ggsurvplot failed:", e$message, "\nUsing base R plotting instead.\n")
+  })
+}
+
+# Fall back to base R plotting if ggsurvplot failed
+if (!plot_success) {
+  # Set up layout for main plot and risk table
+  layout(matrix(c(1, 2), nrow = 2), heights = c(7, 3))
+
+  # Main survival plot with larger fonts
+  par(mar = c(5, 5, 4, 2))
+  plot(fit,
+       col = curve_colors,
+       lwd = 3.5,
+       xlab = "Months",
+       ylab = "Survival probability",
+       main = paste("Kaplan-Meier Survival Curves -", GENE),
+       mark.time = TRUE,
+       ylim = c(0, 1),
+       cex.lab = 1.8,
+       cex.main = 2.0,
+       cex.axis = 1.6)
+
+  # Add legend with larger font
+  legend("topright",
+         legend = legend_labels,
+         col = curve_colors,
+         lwd = 3.5,
+         bty = "n",
+         cex = 1.4)
+
+  # Add log-rank test results in a box at bottom left
+  # Create a nice formatted text box
+  text_x <- max(fit$time) * 0.02
+  text_y <- 0.15
+
+  # Add background box
+  rect(text_x - 2, text_y - 0.08, text_x + 40, text_y + 0.08,
+       col = "white", border = "black", lwd = 2)
+
+  # Add text with larger fonts
+  text(text_x, text_y + 0.03,
+       "Log-rank test",
+       pos = 4, cex = 1.4, font = 2)
+  text(text_x, text_y - 0.03,
+       sprintf("p = %.3e", logrank_pval),
+       pos = 4, cex = 1.3)
+
+  # Risk table with larger fonts
+  par(mar = c(5, 5, 0, 2))
+  time_points <- seq(0, max(fit$time), by = 20)
+  risk_summary <- summary(fit, times = time_points)
+
+  plot(1, type = "n", xlim = range(time_points), ylim = c(0.5, length(unique(df$group)) + 0.5),
+       xlab = "Months", ylab = "", yaxt = "n", main = "",
+       cex.lab = 1.6, cex.axis = 1.4)
+
+  for (i in 1:length(unique(df$group))) {
+    idx <- risk_summary$strata == levels(df$group)[i]
+    if (any(idx)) {
+      text(time_points, rep(i, length(time_points)),
+           risk_summary$n.risk[idx],
+           col = curve_colors[i],
+           cex = 1.2)
+    }
+  }
+
+  axis(2, at = 1:length(legend_labels), labels = legend_labels, las = 1, cex.axis = 1.3)
+  title(ylab = "Number at risk", line = 3.5, cex.lab = 1.6)
+}
+
+dev.off()
+cat("KM survival plot saved to:", paste0("./km_survival_", GENE, ".pdf\n"))
+```
+

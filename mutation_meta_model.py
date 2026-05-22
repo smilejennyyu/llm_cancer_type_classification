@@ -43,11 +43,15 @@ def load_and_prepare_data(data_path, model1_pred, model1_prob, model2_pred, mode
 def prepare_features_and_labels(df, model1_pred, model1_prob, model2_pred, model2_prob):
     """Prepare features and labels for machine learning models."""
     # Prepare features - using predictions and probabilities
-    features = df[[model1_pred, model1_prob, model2_pred, model2_prob]]
+    features = df[[model1_pred, model1_prob, model2_pred, model2_prob]].copy()
     labels = df['ground_truth']
 
-    # Encode categorical predictions
-    features_encoded = pd.get_dummies(features, columns=[model1_pred, model2_pred, model1_prob, model2_prob])
+    # One-hot encode only the categorical prediction columns (not probabilities)
+    features_encoded = pd.get_dummies(features, columns=[model1_pred, model2_pred])
+
+    # Ensure probability columns are numeric
+    features_encoded[model1_prob] = pd.to_numeric(features_encoded[model1_prob], errors='coerce').fillna(0)
+    features_encoded[model2_prob] = pd.to_numeric(features_encoded[model2_prob], errors='coerce').fillna(0)
 
     # Encode labels
     label_encoder = LabelEncoder()

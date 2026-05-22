@@ -1,0 +1,37 @@
+Model,N,Accuracy (%),Weighted F1,Weighted Precision,Weighted Recall,Task
+Qwen3-30B,34415,89.93,0.8977,0.899,0.8993,Mutation Status
+MetaCH,34415,89.67,0.8926,0.903,0.8967,Mutation Status
+DeepSeek-Distill-32B,34415,88.27,0.8784,0.8864,0.8827,Mutation Status
+Qwen3-235B,34415,86.93,0.8626,0.8769,0.8693,Mutation Status
+Claude-Opus-4.5,34415,83.57,0.8393,0.8543,0.8357,Mutation Status
+Claude-Sonnet-4.5,34415,81.15,0.8084,0.808,0.8115,Mutation Status
+o3-mini,34415,80.03,0.7752,0.8299,0.8003,Mutation Status
+GPT-5,34415,79.81,0.7778,0.8128,0.7981,Mutation Status
+GPT-4o,34415,79.68,0.7768,0.8097,0.7968,Mutation Status
+DeepSeek-R1,34415,78.82,0.7708,0.7921,0.7882,Mutation Status
+Claude-Sonnet-3.7,34415,78.67,0.7925,0.8572,0.7867,Mutation Status
+MedGemma-27B,34415,75.5,0.7342,0.7506,0.755,Mutation Status
+AlphaMissense,13468,86.61,0.8663,0.8667,0.8661,Oncogenicity
+GPT-5,13468,77.47,0.7802,0.8245,0.7747,Oncogenicity
+o3-mini,13468,75.21,0.7464,0.7456,0.7521,Oncogenicity
+Claude-Opus-4.5,13468,75.14,0.7562,0.7701,0.7514,Oncogenicity
+Claude-Sonnet-3.7,13468,73.11,0.7324,0.7339,0.7311,Oncogenicity
+DeepSeek-R1,13468,69.91,0.6926,0.6901,0.6991,Oncogenicity
+GPT-4o,13468,69.39,0.6999,0.715,0.6939,Oncogenicity
+Qwen3-235B,13468,68.3,0.6533,0.6621,0.683,Oncogenicity
+Claude-Sonnet-4.5,13468,67.73,0.6822,0.6913,0.6773,Oncogenicity
+MedGemma-27B,13468,65.9,0.6169,0.6268,0.659,Oncogenicity
+DeepSeek-Distill-32B,13468,65.84,0.5338,0.6577,0.6584,Oncogenicity
+Qwen3-30B,13468,65.38,0.526,0.5883,0.6538,Oncogenicity
+GDD-ENS,102791,54.68,0.5702,0.6361,0.5468,Cancer Type
+GPT-5,102791,48.06,0.4876,0.5229,0.4806,Cancer Type
+Claude-Opus-4.5,102791,48.03,0.465,0.4933,0.4803,Cancer Type
+Claude-Sonnet-3.7,102791,44.18,0.4133,0.4528,0.4418,Cancer Type
+o3-mini,102791,43.42,0.4218,0.4716,0.4342,Cancer Type
+Claude-Sonnet-4.5,102791,43.11,0.4098,0.4575,0.4311,Cancer Type
+DeepSeek-R1,102791,40.51,0.4035,0.4567,0.4051,Cancer Type
+GPT-4o,102009,34.68,0.3209,0.3792,0.3468,Cancer Type
+Qwen3-235B,102791,33.44,0.3106,0.378,0.3344,Cancer Type
+Qwen3-30B,92321,25.34,0.2564,0.3473,0.2534,Cancer Type
+DeepSeek-Distill-32B,96083,24.01,0.2289,0.3627,0.2401,Cancer Type
+MedGemma-27B,102791,20.9,0.1933,0.3219,0.209,Cancer Type

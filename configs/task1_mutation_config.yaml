@@ -24,8 +24,8 @@ output_base_dir: "/data1/morrisq/yuj13/llm_genomics/mutation_report"
 # Report variants to generate
 # Set to true/false to enable/disable specific variants
 generate_variants:
-  with_vaf_aggregate: true       # mutation_status_final_aggregate/
-  with_vaf_noaggregate: true     # mutation_status_final/
+  with_vaf_aggregate: true       # mutation_status_final/
+  with_vaf_noaggregate: true     # mutation_status_final_aggregate/
   no_vaf_aggregate: true         # mutation_status_final_noVAF_aggregate/
   no_vaf_noaggregate: true       # mutation_status_final_noVAF/
 
@@ -81,11 +81,13 @@ required_columns:
   - "Reference_Allele"
   - "Tumor_Seq_Allele2"
   - "t_VAF"
+  - "Chromosome"
+  - "Start_Position"
+  - "End_Position"
 
 # Features to include in reports
 report_features:
   - "CANCER_TYPE"
-  - "CANCER_TYPE_DETAILED"
 
 # ============================================================================
 # Logging
