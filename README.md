@@ -10,7 +10,7 @@ This repository benchmarks large language models (LLMs) on three genomic classif
 
 Each task follows the same three-step pipeline:
 
-## Step 0: **Generate features (Cancer Type Classification baselind - GDD-ENS)**
+## Step 0: **Generate features (Cancer Type Classification baseline - GDD-ENS)**
 
    A sample Genie feature table is included at `input_features/genie_ft_9_samples.csv`. To create your own for the entire Genie data:
 
