@@ -18,9 +18,9 @@ input:
 # Model 1 Configuration
 # ============================================================================
 model1:
-  name: "AlphaMissense"  # Name used in output files and plots
-  prediction_column: "AlphaMissense_prediction"
-  probability_column: "AlphaMissense_prob"
+  name: "MetaCH"  # Name used in output files and plots
+  prediction_column: "MetaCH_prediction"
+  probability_column: "MetaCH_prob"
 
 # ============================================================================
 # Model 2 Configuration

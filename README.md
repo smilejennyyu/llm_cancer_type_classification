@@ -162,7 +162,34 @@ Each task follows the same three-step pipeline:
 
    Combines two models' predictions for TUMOR-SOMATIC vs CHIP classification.
 
-   **Example**: AlphaMissense + gpt-4o
+   **Example**: MetaCH + LLM (e.g., gpt-4o)
+
+   #### Getting MetaCH predictions
+
+   [MetaCH](https://github.com/ncoudray/MetaCH) is a random-forest classifier trained to distinguish clonal hematopoiesis (CHIP) mutations from tumor-somatic mutations. Run it on your mutation data to produce a predictions file, then rename the relevant columns to match the ensemble config:
+
+   | Column | Value |
+   |--------|-------|
+   | `SAMPLE_ID` | sample identifier |
+   | `PATIENT_ID` | patient identifier |
+   | `ground_truth` | `TUMOR-SOMATIC` or `CHIP` |
+   | `MetaCH_prediction` | `TUMOR-SOMATIC` or `CHIP` |
+   | `MetaCH_prob` | confidence score (0–1) |
+   | `CANCER_TYPE` | cancer type label |
+
+   #### Merging with LLM predictions
+
+   The ensemble expects a **single merged CSV** containing both MetaCH and LLM columns. Merge on `SAMPLE_ID` before running:
+
+   ```python
+   import pandas as pd
+   metach = pd.read_csv("metach_predictions.csv")   # MetaCH_prediction, MetaCH_prob, ...
+   llm    = pd.read_csv("llm_predictions.csv")       # prediction, prob, ...
+   merged = metach.merge(llm[["SAMPLE_ID", "prediction", "prob"]], on="SAMPLE_ID")
+   merged.to_csv("merged_predictions.csv", index=False)
+   ```
+
+   Then set `input.data_path` in `configs/task1_mutation_ensemble_config.yaml` to the merged file.
 
    ```bash
    python 3_ensemble_model/task12_mutation_ensemble.py --config configs/task1_mutation_ensemble_config.yaml
@@ -174,7 +201,49 @@ Each task follows the same three-step pipeline:
 
    Combines two models' predictions for Oncogenic vs Benign classification.
 
-   **Example**: AlphaMissense + gpt-4o
+   **Example**: AlphaMissense + LLM (e.g., gpt-4o)
+
+   #### Getting AlphaMissense predictions
+
+   [AlphaMissense](https://github.com/google-deepmind/alphamissense) is Google DeepMind's precomputed database of pathogenicity scores for human missense variants. Download the lookup table and join it to your mutation data on `(CHROM, POS, REF, ALT)` or `(Hugo_Symbol, HGVSp_Short)`.
+
+   Convert the raw `am_pathogenicity` score to a binary label using Google's recommended thresholds:
+
+   ```python
+   import pandas as pd
+
+   am = pd.read_csv("AlphaMissense_hg38.tsv", sep="\t", comment="#")
+   # Join to your mutations on chromosome position or protein change, then:
+   am["AlphaMissense_prediction"] = am["am_class"].map({
+       "likely_pathogenic": "Oncogenic",
+       "ambiguous":         "Benign",
+       "likely_benign":     "Benign",
+   })
+   am["AlphaMissense_prob"] = am["am_pathogenicity"]
+   ```
+
+   The merged file must contain:
+
+   | Column | Value |
+   |--------|-------|
+   | `SAMPLE_ID` | sample identifier |
+   | `PATIENT_ID` | patient identifier |
+   | `ground_truth` | `Oncogenic` or `Benign` |
+   | `AlphaMissense_prediction` | `Oncogenic` or `Benign` |
+   | `AlphaMissense_prob` | `am_pathogenicity` score (0–1) |
+   | `CANCER_TYPE` | cancer type label |
+
+   #### Merging with LLM predictions
+
+   ```python
+   import pandas as pd
+   am  = pd.read_csv("alphamissense_predictions.csv")  # AlphaMissense_prediction, AlphaMissense_prob, ...
+   llm = pd.read_csv("llm_predictions.csv")             # prediction, prob, ...
+   merged = am.merge(llm[["SAMPLE_ID", "prediction", "prob"]], on="SAMPLE_ID")
+   merged.to_csv("merged_oncogenic_predictions.csv", index=False)
+   ```
+
+   Then set `input.data_path` in `configs/task2_oncogenic_ensemble_config.yaml` to the merged file.
 
    ```bash
    python 3_ensemble_model/task12_mutation_ensemble.py --config configs/task2_oncogenic_ensemble_config.yaml
